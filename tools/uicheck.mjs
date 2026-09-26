@@ -1,0 +1,876 @@
+/**
+ * Zero-dependency browser QA harness (Chrome DevTools Protocol over WebSocket).
+ *
+ * Usage: node tools/uicheck.mjs <scenario>
+ * Scenarios: login | register | dashboard | board
+ *
+ * Env: APP_URL (default http://localhost:5173), CDP_PORT (9222),
+ *      QA_TOKEN, QA_USER (JSON), QA_BOARD_ID, QA_OUT (default .uiqa)
+ */
+import { spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const CDP_PORT = Number(process.env.CDP_PORT ?? 9222);
+const OUT_DIR = resolve(process.env.QA_OUT ?? '.uiqa');
+const TOKEN = process.env.QA_TOKEN ?? '';
+const USER_JSON = process.env.QA_USER ?? '{}';
+const BOARD_ID = process.env.QA_BOARD_ID ?? '';
+
+const CHROME_CANDIDATES = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function cdpEndpoint() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`);
+    const targets = await res.json();
+    const page = targets.find((t) => t.type === 'page');
+    if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
+  } catch {
+    /* browser not up yet */
+  }
+  return null;
+}
+
+async function launchBrowser() {
+  const bin = CHROME_CANDIDATES.find((p) => existsSync(p));
+  if (!bin) throw new Error('No Chrome/Edge binary found');
+  const profile = join(OUT_DIR, 'chrome-profile');
+  const child = spawn(
+    bin,
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-extensions',
+      '--hide-scrollbars',
+      '--window-size=1440,900',
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${profile}`,
+      'about:blank',
+    ],
+    { detached: true, stdio: 'ignore' }
+  );
+  child.unref();
+  for (let i = 0; i < 40; i++) {
+    await sleep(250);
+    const url = await cdpEndpoint();
+    if (url) return url;
+  }
+  throw new Error('Browser did not expose a CDP page target in time');
+}
+
+class Session {
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+    this.problems = [];
+    this.wsFrames = [];
+    ws.addEventListener('message', (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.id && this.pending.has(msg.id)) {
+        const { resolve: ok, reject: bad } = this.pending.get(msg.id);
+        this.pending.delete(msg.id);
+        if (msg.error) bad(new Error(JSON.stringify(msg.error)));
+        else ok(msg.result);
+        return;
+      }
+      this.onEvent(msg);
+    });
+  }
+
+  onEvent(msg) {
+    if (msg.method === 'Runtime.exceptionThrown') {
+      const d = msg.params.exceptionDetails;
+      this.problems.push(`[exception] ${d.exception?.description ?? d.text}`);
+    }
+    if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
+      const text = msg.params.args
+        .map((a) => {
+          if ('value' in a) return typeof a.value === 'string' ? a.value : JSON.stringify(a.value);
+          if (a.preview?.properties) {
+            return a.preview.properties.map((p) => `${p.name}:${p.value}`).join(',');
+          }
+          if (a.description) return a.description;
+          return `<${a.className || a.subtype || a.type}>`;
+        })
+        .join(' | ');
+      this.problems.push(`[console.${msg.params.type}] ${text}`);
+    }
+    if (msg.method === 'Log.entryAdded' && ['error', 'warning'].includes(msg.params.entry.level)) {
+      const e = msg.params.entry;
+      this.problems.push(`[log.${e.level}] ${e.text} ${e.url ?? ''}`.trim());
+    }
+    if (msg.method === 'Network.webSocketFrameReceived') {
+      const payload = msg.params.response?.payloadData ?? '';
+      if (payload.includes('"ACTIVITY"') && this.wsFrames.length < 4) {
+        this.wsFrames.push(payload.slice(0, 420));
+      }
+    }
+    if (msg.method === 'Network.loadingFailed' && !msg.params.canceled) {
+      this.problems.push(`[net-fail] ${msg.params.errorText} (${msg.params.type})`);
+    }
+    if (msg.method === 'Network.responseReceived' && msg.params.response.status >= 400) {
+      this.problems.push(`[http-${msg.params.response.status}] ${msg.params.response.url}`);
+    }
+  }
+
+  send(method, params = {}) {
+    const id = ++this.id;
+    this.ws.send(JSON.stringify({ id, method, params }));
+    return new Promise((ok, bad) => this.pending.set(id, { resolve: ok, reject: bad }));
+  }
+
+  async evaluate(expression) {
+    const res = await this.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (res.exceptionDetails) {
+      throw new Error(`eval failed: ${res.exceptionDetails.exception?.description ?? 'unknown'}`);
+    }
+    return res.result?.value;
+  }
+
+  async ready() {
+    await this.send('Page.enable');
+    await this.send('Runtime.enable');
+    await this.send('Log.enable');
+    await this.send('Network.enable');
+    await this.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  }
+
+  async goto(path, settle = 1500) {
+    await this.send('Page.navigate', { url: `${APP_URL}${path}` });
+    await sleep(settle);
+  }
+
+  async shot(name) {
+    const { data } = await this.send('Page.captureScreenshot', { format: 'png' });
+    mkdirSync(OUT_DIR, { recursive: true });
+    const file = join(OUT_DIR, `${name}.png`);
+    writeFileSync(file, Buffer.from(data, 'base64'));
+    console.log(`shot -> ${file}`);
+  }
+
+  async setSession() {
+    await this.evaluate(
+      `localStorage.setItem('taskboard.token', ${JSON.stringify(TOKEN)});
+       localStorage.setItem('taskboard.user', ${JSON.stringify(USER_JSON)});
+       'ok'`
+    );
+  }
+
+  /** React-safe input fill (bypasses the controlled-input value tracker). */
+  async fill(selector, value) {
+    return this.evaluate(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return 'no-element';
+      const proto = el.tagName === 'TEXTAREA'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return 'filled';
+    })()`);
+  }
+
+  async clickText(selector, text) {
+    return this.evaluate(`(() => {
+      const wanted = ${JSON.stringify(text.toLowerCase())};
+      const hit = [...document.querySelectorAll(${JSON.stringify(selector)})].find((n) =>
+        (n.textContent || '').trim().toLowerCase().includes(wanted)
+      );
+      if (!hit) return 'not-found';
+      hit.click();
+      return 'clicked';
+    })()`);
+  }
+
+  async escape() {
+    await this.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); 'ok'`);
+  }
+
+  /** Raw mouse input so @hello-pangea/dnd sees a genuine pointer drag. */
+  async mouse(type, x, y, extra = {}) {
+    await this.send('Input.dispatchMouseEvent', {
+      type,
+      x: Math.round(x),
+      y: Math.round(y),
+      button: 'left',
+      buttons: type === 'mouseReleased' ? 0 : 1,
+      clickCount: type === 'mouseMoved' ? 0 : 1,
+      pointerType: 'mouse',
+      ...extra,
+    });
+  }
+
+  /** Press -> N interpolated moves -> release, like a human drag. */
+  async dragTo(from, to, steps = 18) {
+    await this.mouse('mousePressed', from.x, from.y);
+    await sleep(120);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      await this.mouse('mouseMoved', from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+      await sleep(22);
+    }
+    await sleep(120);
+    await this.mouse('mouseReleased', to.x, to.y);
+  }
+
+  report() {
+    console.log(`problems: ${this.problems.length}`);
+    this.problems.forEach((p) => console.log('  ' + p));
+  }
+}
+
+async function connect() {
+  let url = await cdpEndpoint();
+  if (!url) url = await launchBrowser();
+  const ws = new WebSocket(url);
+  await new Promise((ok, bad) => {
+    ws.addEventListener('open', ok, { once: true });
+    ws.addEventListener('error', () => bad(new Error('CDP socket error')), { once: true });
+  });
+  const session = new Session(ws);
+  await session.ready();
+  return session;
+}
+
+async function runLogin(s) {
+  await s.goto('/login', 2500);
+  await s.shot('01-login');
+  await s.fill('input[type="email"]', 'nobody@example.com');
+  await s.fill('input[type="password"]', 'wrong-password');
+  await s.evaluate(`document.querySelector('form').requestSubmit(); 'submitted'`);
+  await sleep(2500);
+  await s.shot('02-login-error-toast');
+}
+
+async function runRegister(s) {
+  await s.goto('/register', 2500);
+  await s.shot('03-register');
+}
+
+async function runDashboard(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto('/boards', 3000);
+  await s.shot('04-dashboard');
+  await s.goto('/boards?new=1', 1800);
+  await s.shot('05-create-board-modal');
+  await s.escape();
+  await sleep(700);
+  await s.goto('/boards', 2000);
+  await s.fill('input[placeholder="Search boards…"]', 'zzz');
+  await sleep(900);
+  await s.shot('06-dashboard-no-match');
+}
+
+async function runBoard(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+  await s.shot('07-board');
+
+  console.log('toggle feed:', await s.clickText('button', 'Activity'));
+  await sleep(900);
+  await s.shot('08-board-feed-hidden');
+  await s.clickText('button', 'Activity');
+  await sleep(900);
+
+  const card = await s.evaluate(`(() => {
+    const el = [...document.querySelectorAll('div.group')].find((d) => d.querySelector('p'));
+    if (!el) return 'no-card';
+    el.click();
+    return 'clicked';
+  })()`);
+  console.log('card click:', card);
+  await sleep(1600);
+  await s.shot('09-card-details-modal');
+  await s.escape();
+  await sleep(800);
+
+  console.log('invite:', await s.clickText('button', 'Invite'));
+  await sleep(1300);
+  await s.shot('10-invite-modal');
+  await s.escape();
+  await sleep(800);
+
+  // List overflow menu -> rename editor -> delete confirmation dialog (then cancel).
+  const menu = await s.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) =>
+      (b.getAttribute('aria-label') || '').startsWith('Actions for')
+    );
+    if (!btn) return 'no-menu-button';
+    btn.click();
+    return 'opened';
+  })()`);
+  console.log('list menu:', menu);
+  await sleep(900);
+  await s.shot('11-list-menu');
+  console.log('delete item:', await s.clickText('button', 'Delete list'));
+  await sleep(1200);
+  await s.shot('12-confirm-dialog');
+  await s.escape();
+  await sleep(700);
+}
+
+async function runListMenu(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  const menu = await s.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) =>
+      (b.getAttribute('aria-label') || '').startsWith('Actions for')
+    );
+    if (!btn) return 'no-menu-button';
+    btn.click();
+    return 'opened';
+  })()`);
+  console.log('list menu:', menu);
+  await sleep(900);
+  await s.shot('13-list-menu-open');
+
+  console.log('rename item:', await s.clickText('button', 'Rename'));
+  await sleep(900);
+  await s.shot('14-list-rename-inline');
+  await s.escape();
+  await sleep(600);
+
+  const menu2 = await s.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) =>
+      (b.getAttribute('aria-label') || '').startsWith('Actions for')
+    );
+    if (!btn) return 'no-menu-button';
+    btn.click();
+    return 'opened';
+  })()`);
+  console.log('reopened menu:', menu2);
+  await sleep(700);
+  console.log('delete item:', await s.clickText('button', 'Delete list'));
+  await sleep(1200);
+  await s.shot('15-confirm-dialog');
+  await s.escape();
+  await sleep(700);
+}
+
+async function runMeasure(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto('/boards', 3000);
+  const info = await s.evaluate(`(() => {
+    const rect = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const scroller = document.querySelector('.thin-scrollbar');
+    const hero = scroller && scroller.firstElementChild;
+    const grid = document.querySelector('[class*="-mt-12"]');
+    return JSON.stringify({
+      inner: [window.innerWidth, window.innerHeight],
+      docClient: [document.documentElement.clientWidth, document.documentElement.clientHeight],
+      bodyScrollWidth: document.body.scrollWidth,
+      scroller: rect(scroller),
+      hero: rect(hero),
+      heroOverflow: hero ? getComputedStyle(hero).overflow : null,
+      heroBgImage: hero ? getComputedStyle(hero).backgroundImage.slice(0, 90) : null,
+      grid: rect(grid),
+    }, null, 2);
+  })()`);
+  console.log(info);
+}
+
+async function runRealtime(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  const countCards = () =>
+    s.evaluate(`document.querySelectorAll('[data-rfd-draggable-id]').length`) ||
+    s.evaluate(`document.querySelectorAll('[data-rfd-draggable-context-id]').length`);
+
+  const probe = await s.evaluate(`(() => {
+    const el = [...document.querySelectorAll('div')].find((d) =>
+      d.className && String(d.className).includes('shadow-card')
+    );
+    if (!el) return 'no-card-el';
+    return JSON.stringify({
+      attrs: [...el.attributes].map((a) => a.name).filter((n) => n.startsWith('data-')),
+      firstLine: (el.innerText || '').split('\\n')[0],
+    });
+  })()`);
+  console.log('card probe:', probe);
+  const before = await countCards();
+  const detail = await (
+    await fetch(`http://localhost:8080/api/boards/${BOARD_ID}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    })
+  ).json();
+  const list = detail.lists[0];
+
+  const res = await fetch(
+    `http://localhost:8080/api/boards/${BOARD_ID}/lists/${list.id}/cards`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Realtime check (pushed via REST)',
+        priority: 'HIGH',
+        description: 'Created outside the browser to verify the WebSocket fan-out.',
+      }),
+    }
+  );
+  console.log(`push into "${list.name}": HTTP ${res.status}`);
+
+  await sleep(3500);
+  const after = await countCards();
+  console.log(`cards before=${before} after=${after} -> realtime ${after > before ? 'OK' : 'FAILED'}`);
+  console.log(
+    'feed shows event:',
+    await s.evaluate(`document.body.innerText.includes('Realtime check')`)
+  );
+  const times = await s.evaluate(`JSON.stringify(
+    [...document.querySelectorAll('time')].slice(0, 3).map((t) => ({
+      dateTime: t.getAttribute('datetime'),
+      text: t.textContent,
+      title: t.getAttribute('title'),
+    })), null, 2)`);
+  console.log('feed <time> elements:', times);
+  console.log('--- raw ACTIVITY frames ---');
+  s.wsFrames.forEach((f) => console.log(f));
+  await s.shot('16-realtime-pushed-card');
+}
+
+const LAYOUT_PROBE = `(() => {
+  const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; };
+  const columns = [...document.querySelectorAll('[data-rfd-droppable-id]')]
+    .filter((d) => d.getAttribute('data-rfd-droppable-id') !== 'board')
+    .map((drop) => {
+      const col = drop.closest('.flex.max-h-full') || drop.parentElement;
+      return {
+        dropId: drop.getAttribute('data-rfd-droppable-id'),
+        column: r(col),
+        columnOverflow: getComputedStyle(col).overflow,
+        columnBackdrop: getComputedStyle(col).backdropFilter,
+        columnMaxHeight: getComputedStyle(col).maxHeight,
+        innerClientH: drop.clientHeight,
+        innerScrollH: drop.scrollHeight,
+        innerScrollsInternally: drop.scrollHeight > drop.clientHeight + 1,
+        cards: [...drop.querySelectorAll('[data-rfd-draggable-id]')].map((c) => c.innerText.split('\\n')[0].slice(0, 24)),
+      };
+    });
+  const boardScroller = document.querySelector('.thin-scrollbar-light.flex.flex-1');
+  return JSON.stringify({
+    viewport: [window.innerWidth, window.innerHeight],
+    columns,
+    boardScroller: boardScroller ? { ...r(boardScroller), scrollH: boardScroller.scrollHeight, clientH: boardScroller.clientHeight, scrollsVertically: boardScroller.scrollHeight > boardScroller.clientHeight + 1 } : null,
+  }, null, 1);
+})()`;
+
+const DRAG_PROBE = `(() => {
+  const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; };
+  const dragging = [...document.querySelectorAll('[data-rfd-draggable-context-id]')]
+    .find((el) => getComputedStyle(el).position === 'fixed') || null;
+  if (!dragging) return JSON.stringify({ dragging: null });
+  const s = getComputedStyle(dragging);
+  const blockers = []; const clippers = [];
+  for (let el = dragging.parentElement; el; el = el.parentElement) {
+    const cs = getComputedStyle(el);
+    if (cs.transform !== 'none' || cs.backdropFilter !== 'none' || cs.filter !== 'none' ||
+        cs.perspective !== 'none' || cs.willChange !== 'auto' || cs.contain !== 'none') {
+      blockers.push({ cls: String(el.className).slice(0, 55), transform: cs.transform !== 'none', backdrop: cs.backdropFilter, contain: cs.contain });
+    }
+    if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+      clippers.push({ cls: String(el.className).slice(0, 55), overflow: cs.overflow, rect: r(el) });
+    }
+  }
+  return JSON.stringify({ rect: r(dragging), position: s.position, zIndex: s.zIndex, blockers, clippers }, null, 1);
+})()`;
+
+async function runDnd(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  console.log('--- board layout (before drag) ---');
+  console.log(await s.evaluate(LAYOUT_PROBE));
+
+  const targets = await s.evaluate(`(() => {
+    const card = document.querySelector('[data-rfd-droppable-id]:not([data-rfd-droppable-id="board"]) [data-rfd-draggable-id]');
+    const drops = [...document.querySelectorAll('[data-rfd-droppable-id]')]
+      .filter((d) => d.getAttribute('data-rfd-droppable-id') !== 'board');
+    if (!card || drops.length < 2) return JSON.stringify({ error: 'not enough cards/lists' });
+    const cb = card.getBoundingClientRect();
+    const db = drops[1].getBoundingClientRect();
+    return JSON.stringify({
+      cardText: card.innerText.split('\\n')[0].slice(0, 40),
+      from: { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 },
+      to: { x: db.x + db.width / 2, y: db.y + 90 },
+    });
+  })()`);
+  console.log('targets:', targets);
+  const t = JSON.parse(targets);
+  if (t.error) { console.log('skipping drag:', t.error); return; }
+
+  console.log('--- dragging (mid-flight probe) ---');
+  await s.mouse('mousePressed', t.from.x, t.from.y);
+  await sleep(150);
+  for (let i = 1; i <= 16; i++) {
+    const p = i / 16;
+    await s.mouse('mouseMoved', t.from.x + (t.to.x - t.from.x) * p, t.from.y + (t.to.y - t.from.y) * p);
+    await sleep(25);
+  }
+  console.log('pointer is at', JSON.stringify({ x: Math.round(t.to.x), y: Math.round(t.to.y) }));
+  console.log(await s.evaluate(DRAG_PROBE));
+  await s.shot('17-drag-in-flight');
+  await s.mouse('mouseReleased', t.to.x, t.to.y);
+  await sleep(2200);
+
+  console.log('--- after drop ---');
+  console.log('card details modal opened by the drag?',
+    await s.evaluate(`Boolean(document.querySelector('[role="dialog"]'))`));
+  console.log(await s.evaluate(LAYOUT_PROBE));
+  await s.shot('18-after-card-drag');
+
+  const server = await (
+    await fetch(`http://localhost:8080/api/boards/${BOARD_ID}`, { headers: { Authorization: `Bearer ${TOKEN}` } })
+  ).json();
+  console.log('server order:', JSON.stringify(
+    server.lists.map((l) => ({ list: l.name, cards: l.cards.map((c) => c.title.slice(0, 20) + '@' + c.position) })), null, 1));
+
+  // ---- column (list) drag ----
+  const colDrag = await s.evaluate(`(() => {
+    const listDraggable = document.querySelector('[data-rfd-droppable-id="board"] [data-rfd-draggable-id]');
+    if (!listDraggable) return null;
+    const handle = listDraggable.querySelector('[data-rfd-drag-handle-draggable-id]');
+    if (!handle) return null;
+    const hb = handle.getBoundingClientRect();
+    const boardDrop = document.querySelector('[data-rfd-droppable-id="board"]');
+    const bb = boardDrop.getBoundingClientRect();
+    return JSON.stringify({
+      from: { x: hb.x + 40, y: hb.y + hb.height / 2 },
+      to: { x: Math.min(bb.x + bb.width - 80, window.innerWidth - 40), y: hb.y + hb.height / 2 },
+    });
+  })()`);
+  if (!colDrag) { console.log('no list drag handle found'); return; }
+  const c = JSON.parse(colDrag);
+  console.log('--- column drag ---', JSON.stringify(c));
+  await s.mouse('mousePressed', c.from.x, c.from.y);
+  await sleep(150);
+  for (let i = 1; i <= 16; i++) {
+    const p = i / 16;
+    await s.mouse('mouseMoved', c.from.x + (c.to.x - c.from.x) * p, c.from.y + (c.to.y - c.from.y) * p);
+    await sleep(25);
+  }
+  console.log('pointer at', JSON.stringify(c.to));
+  console.log(await s.evaluate(DRAG_PROBE));
+  await s.shot('19-column-drag-in-flight');
+  await s.mouse('mouseReleased', c.to.x, c.to.y);
+  await sleep(2200);
+  console.log('list order after column drag:', await s.evaluate(`JSON.stringify(
+    [...document.querySelectorAll('[data-rfd-droppable-id="board"] [data-rfd-draggable-id] > div')].map((d) => d.innerText.split('\\n')[0].slice(0, 14))`));
+  await s.shot('20-after-column-drag');
+}
+
+async function runDndProbe(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+  console.log('dnd attributes:', await s.evaluate(`JSON.stringify([
+    ...new Set([...document.querySelectorAll('*')].flatMap((e) =>
+      [...e.attributes].map((a) => a.name).filter((n) => n.includes('rfd') || n.includes('dnd') || n.includes('drag'))
+    ))
+  ])`));
+  // Full ancestor chain of a card droppable with every scroll/filter property.
+  console.log(await s.evaluate(`(() => {
+    const drop = [...document.querySelectorAll('[data-rfd-droppable-id]')]
+      .find((d) => d.getAttribute('data-rfd-droppable-id') !== 'board');
+    const chain = [];
+    for (let el = drop; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      chain.push({
+        el: el.tagName + '.' + String(el.className).split(' ').slice(0, 3).join('.'),
+        overflow: cs.overflow, overflowX: cs.overflowX, overflowY: cs.overflowY,
+        backdropFilter: cs.backdropFilter,
+        transform: cs.transform === 'none' ? 'none' : 'set',
+        isScrollContainer: cs.overflowX !== 'visible' || cs.overflowY !== 'visible',
+      });
+    }
+    return JSON.stringify(chain, null, 1);
+  })()`));
+}
+
+async function runDndFix(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  const OFFSET_PROBE = `(() => {
+    const dragging = [...document.querySelectorAll('[data-rfd-draggable-context-id]')]
+      .find((el) => getComputedStyle(el).position === 'fixed');
+    if (!dragging) return JSON.stringify({ dragging: null });
+    const b = dragging.getBoundingClientRect();
+    const col = dragging.closest('.flex.max-h-full');
+    const cb = col ? col.getBoundingClientRect() : null;
+    return JSON.stringify({
+      draggedTop: Math.round(b.y), draggedLeft: Math.round(b.x),
+      draggedCenterY: Math.round(b.y + b.height / 2),
+      columnTop: cb ? Math.round(cb.y) : null,
+      columnLeft: cb ? Math.round(cb.x) : null,
+      offsetFromColumnTop: cb ? Math.round(b.y - cb.y) : null,
+    });
+  })()`;
+
+  const grab = await s.evaluate(`(() => {
+    const card = document.querySelector('[data-rfd-droppable-id]:not([data-rfd-droppable-id="board"]) [data-rfd-draggable-id]');
+    const drops = [...document.querySelectorAll('[data-rfd-droppable-id]')].filter((d) => d.getAttribute('data-rfd-droppable-id') !== 'board');
+    const cb = card.getBoundingClientRect(); const db = drops[1].getBoundingClientRect();
+    return JSON.stringify({ from: { x: cb.x + cb.width/2, y: cb.y + cb.height/2 }, to: { x: db.x + db.width/2, y: db.y + 90 } });
+  })()`);
+  const t = JSON.parse(grab);
+
+  async function measure(label) {
+    await s.mouse('mousePressed', t.from.x, t.from.y);
+    await sleep(140);
+    for (let i = 1; i <= 14; i++) {
+      const p = i / 14;
+      await s.mouse('mouseMoved', t.from.x + (t.to.x - t.from.x) * p, t.from.y + (t.to.y - t.from.y) * p);
+      await sleep(25);
+    }
+    await sleep(120);
+    const probe = JSON.parse(await s.evaluate(OFFSET_PROBE));
+    console.log(`\n[${label}] pointerY=${Math.round(t.to.y)}  ${JSON.stringify(probe)}`);
+    if (probe.draggedCenterY != null) {
+      console.log(`   -> cursor/card vertical gap: ${Math.round(t.to.y - probe.draggedCenterY)}px`);
+    }
+    await s.mouse('mouseReleased', t.to.x, t.to.y);
+    await sleep(1500);
+    return probe;
+  }
+
+  console.log('=== BASELINE (as shipped: backdrop-blur-md on every column) ===');
+  await measure('baseline');
+  await s.goto(`/boards/${BOARD_ID}`, 3000);
+
+  console.log('\n=== EXPERIMENT: disable backdrop-filter + column overflow clipping ===');
+  await s.evaluate(`(() => {
+    const st = document.createElement('style');
+    st.id = 'dnd-fix';
+    st.textContent = '.max-h-full { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; overflow: visible !important; }';
+    document.head.appendChild(st);
+    return 'injected';
+  })()`);
+  await sleep(400);
+  const fixed = await measure('no-backdrop-filter');
+  await s.shot('21-dnd-fix-experiment');
+  await s.evaluate(`document.getElementById('dnd-fix')?.remove(); 'removed'`);
+}
+
+async function runColDrag(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  // Map the header's interactive vs non-interactive zones.
+  console.log('header zones:', await s.evaluate(`(() => {
+    const h = document.querySelector('[data-rfd-droppable-id="board"] [data-rfd-drag-handle-draggable-id]');
+    if (!h) return 'no handle';
+    const r = (e) => { const b = e.getBoundingClientRect(); return { tag: e.tagName, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), cx: Math.round(b.x + b.width/2), cy: Math.round(b.y + b.height/2) }; };
+    return JSON.stringify({ header: r(h), children: [...h.children].map(r) }, null, 1);
+  })()`));
+
+  // Regression guard for the original bug: the drag handle must NOT contain
+  // interactive children, because the library refuses to start a drag when the
+  // press lands on a <button>/<input> etc.
+  console.log('handle contains interactive elements:',
+    await s.evaluate(`(() => {
+      const h = document.querySelector('[data-rfd-droppable-id="board"] [data-rfd-drag-handle-draggable-id]');
+      if (!h) return 'no handle';
+      const bad = [...h.querySelectorAll('input,button,textarea,select,option,optgroup,video,audio')];
+      return JSON.stringify(bad.map((e) => e.tagName + (e.getAttribute('aria-label') || e.textContent.trim().slice(0, 12))));
+    })()`));
+  console.log('header has a visible reorder grip:',
+    await s.evaluate(`Boolean(document.querySelector('[data-rfd-droppable-id="board"] [aria-label^="Reorder"]'))`));
+
+  const ATTEMPTS = [
+    { label: 'grab the reorder GRIP (the intended affordance)', sel: '[data-rfd-droppable-id="board"] [aria-label^="Reorder"]' },
+  ];
+
+  for (const a of ATTEMPTS) {
+    const pt = await s.evaluate(`(() => {
+      const el = document.querySelector(${JSON.stringify(a.sel)});
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return JSON.stringify({ x: b.x + b.width/2, y: b.y + b.height/2 });
+    })()`);
+    if (!pt) { console.log(`\n[${a.label}] -> element not found`); continue; }
+    const p = JSON.parse(pt);
+    const dest = await s.evaluate(`(() => {
+      const d = document.querySelector('[data-rfd-droppable-id="board"]');
+      const b = d.getBoundingClientRect();
+      return JSON.stringify({ x: Math.min(b.x + b.width - 30, window.innerWidth - 30), y: b.y + 24 });
+    })()`);
+    const d2 = JSON.parse(dest);
+    await s.mouse('mousePressed', p.x, p.y);
+    await sleep(140);
+    for (let i = 1; i <= 14; i++) {
+      const q = i / 14;
+      await s.mouse('mouseMoved', p.x + (d2.x - p.x) * q, p.y + (d2.y - p.y) * q);
+      await sleep(25);
+    }
+    const lifted = await s.evaluate(`Boolean([...document.querySelectorAll('[data-rfd-draggable-context-id]')]
+      .find((el) => getComputedStyle(el).position === 'fixed'))`);
+    console.log(`\n[${a.label}] at (${Math.round(p.x)},${Math.round(p.y)}) -> drag lifted: ${lifted}`);
+    await s.shot(`22-coldrag-${lifted ? 'lifted' : 'not-lifted'}`);
+    await s.mouse('mouseReleased', d2.x, d2.y);
+    await sleep(1500);
+    await s.escape();
+    await sleep(400);
+  }
+}
+
+async function runCreateBoard(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto('/boards', 3000);
+  const before = await s.evaluate(`document.querySelectorAll('article').length`);
+  await s.clickText('button', 'New board');
+  await sleep(900);
+  const name = `QA created board ${Date.now()}`;
+  await s.fill('input[placeholder="e.g. Sprint 42"]', name);
+  await s.evaluate(`document.querySelector('form').requestSubmit(); 'submitted'`);
+  await sleep(2500);
+  const after = await s.evaluate(`document.querySelectorAll('article').length`);
+  const hasNew = await s.evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`);
+  console.log(`boards before=${before} after=${after}  new board visible on dashboard: ${hasNew}`);
+  await s.shot('23-after-create-board');
+  // Reload to prove the board did get persisted server-side.
+  await s.goto('/boards', 3000);
+  const afterReload = await s.evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`);
+  console.log(`after reload, new board visible: ${afterReload}`);
+}
+
+/**
+ * Drop-accuracy check: drag a card to a precise slot and compare where it
+ * actually landed (server order) with where it was dropped. The library warns
+ * about nested scroll containers, which can corrupt the drop-index maths, so
+ * this is the test that says whether the warning is cosmetic or real.
+ */
+async function runDropAccuracy(s) {
+  await s.goto('/login', 1200);
+  await s.setSession();
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  const serverOrder = async () => {
+    const detail = await (await fetch(`http://localhost:8080/api/boards/${BOARD_ID}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    })).json();
+    return detail.lists.map((l) => ({ id: l.id, name: l.name, titles: l.cards.map((c) => c.title) }));
+  };
+
+  const before = await serverOrder();
+  // Pick any populated source and any other list as the target; top up an
+  // empty target with a couple of cards so there is a real slot to aim at.
+  const source = before.find((l) => l.titles.length > 0);
+  let target = before.find((l) => l.id !== source?.id);
+  if (!source || !target) { console.log('need at least two lists'); return; }
+  if (target.titles.length < 2) {
+    for (const name of ['droptest-a', 'droptest-b']) {
+      await fetch(`http://localhost:8080/api/boards/${BOARD_ID}/lists/${target.id}/cards`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: name }),
+      });
+    }
+    await s.goto(`/boards/${BOARD_ID}`, 2500);
+    const refreshed = await serverOrder();
+    target = refreshed.find((l) => l.id === target.id);
+  }
+
+  const CASES = [
+    { label: 'top of target', slot: 0 },
+    { label: 'middle of target', slot: Math.floor(target.titles.length / 2) },
+    { label: 'bottom of target', slot: target.titles.length },
+  ];
+
+  let pass = 0;
+  for (const c of CASES) {
+    const geometry = await s.evaluate(`(() => {
+      const drops = [...document.querySelectorAll('[data-rfd-droppable-id]')]
+        .filter((d) => d.getAttribute('data-rfd-droppable-id') !== 'board');
+      const targetDrop = drops.find((d) => d.getAttribute('data-rfd-droppable-id') === ${JSON.stringify(target.id)});
+      if (!targetDrop) return JSON.stringify({ error: 'target droppable missing' });
+      const cards = [...targetDrop.querySelectorAll('[data-rfd-draggable-id]')];
+      const tb = targetDrop.getBoundingClientRect();
+      let y;
+      if (cards.length === 0) { y = tb.y + 20; }
+      else if (${c.slot} >= cards.length) { const l = cards[cards.length-1].getBoundingClientRect(); y = l.y + l.height + 6; }
+      else { const r = cards[${c.slot}].getBoundingClientRect(); y = r.y + r.height / 2; }
+      // Always drag the first card of the first list.
+      const sourceDrop = drops.find((d) => d.getAttribute('data-rfd-droppable-id') === ${JSON.stringify(source.id)});
+      const sc = sourceDrop.querySelector('[data-rfd-draggable-id]');
+      const sb = sc.getBoundingClientRect();
+      return JSON.stringify({
+        card: sc.innerText.split('\\n')[0].slice(0, 40),
+        from: { x: sb.x + sb.width / 2, y: sb.y + sb.height / 2 },
+        to: { x: tb.x + tb.width / 2, y },
+      });
+    })()`);
+    const g = JSON.parse(geometry);
+    if (g.error) { console.log(`[${c.label}] ${g.error}`); continue; }
+
+    await s.dragTo(g.from, g.to, 20);
+    await sleep(2000);
+
+    const after = await serverOrder();
+    const landed = after.find((l) => l.id === target.id);
+    const idx = landed ? landed.titles.indexOf(g.card) : -1;
+    // Server clamps to the "slot among the other cards"; after removing the
+    // dragged card, dropping at slot k should land at index k.
+    const ok = idx === c.slot;
+    if (ok) pass++;
+    console.log(`[${c.label}] dropped "${g.card}" -> server index ${idx} (expected ${c.slot}) ${ok ? 'OK' : 'MISMATCH'}`);
+    if (!ok) console.log(`   target now: ${JSON.stringify(landed?.titles)}`);
+  }
+  console.log(`\ndrop accuracy: ${pass}/${CASES.length}`);
+  await s.shot('24-drop-accuracy');
+}
+
+const scenario = process.argv[2] ?? 'login';
+const session = await connect();
+
+if (scenario === 'login') await runLogin(session);
+else if (scenario === 'register') await runRegister(session);
+else if (scenario === 'dashboard') await runDashboard(session);
+else if (scenario === 'board') await runBoard(session);
+else if (scenario === 'listmenu') await runListMenu(session);
+else if (scenario === 'measure') await runMeasure(session);
+else if (scenario === 'realtime') await runRealtime(session);
+else if (scenario === 'dnd') await runDnd(session);
+else if (scenario === 'dndprobe') await runDndProbe(session);
+else if (scenario === 'dndfix') await runDndFix(session);
+else if (scenario === 'coldrag') await runColDrag(session);
+else if (scenario === 'droptest') await runDropAccuracy(session);
+else if (scenario === 'createboard') await runCreateBoard(session);
+else console.log(`unknown scenario: ${scenario}`);
+
+session.report();
+session.ws.close();
+process.exit(0);
+

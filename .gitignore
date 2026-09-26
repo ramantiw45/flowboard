@@ -1,0 +1,47 @@
+### Maven / Java ###
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+*.hprof
+
+### Node / React ###
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+npm-debug.log*
+
+### Logs ###
+*.log
+logs/
+
+### Secrets & local config ###
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+application-local.yml
+application-local.yaml
+
+### Local QA artifacts (screenshots + a large Chrome profile) ###
+.uiqa/
+
+### IDE ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+nbproject/
+.history/
+
+### OS ###
+.DS_Store
+Thumbs.db
+desktop.ini
+
