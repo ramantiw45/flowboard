@@ -46,3 +46,7 @@ nbproject/
 Thumbs.db
 desktop.ini
 
+### Scratch ###
+# Commit-message scratch files written by tooling.
+.commit-msg.tmp
+
