@@ -1,12 +1,12 @@
-# FlowBoard â€” Real-Time Collaborative Kanban
+# FlowBoard - Real-Time Collaborative Kanban
 
 A multi-user Kanban board where every card move, edit and reorder is streamed to
 all connected teammates over WebSockets. Boards are private: only members can
 read or mutate them, and that rule is enforced on the REST API *and* on the
 real-time topic itself.
 
-**Stack:** Spring Boot 3.5 (Java 21) Â· PostgreSQL 13+ Â· Flyway Â· JWT Â·
-STOMP-over-SockJS Â· React 18 Â· Vite Â· TypeScript Â· Tailwind CSS
+**Stack:** Spring Boot 3.5 (Java 21) | PostgreSQL 13+ | Flyway | JWT | 
+STOMP-over-SockJS | React 18 | Vite | TypeScript | Tailwind CSS
 
 ---
 
@@ -38,7 +38,7 @@ STOMP-over-SockJS Â· React 18 Â· Vite Â· TypeScript Â· Tailwind CSS
 | **Real time** | Every mutation is broadcast to the board topic after the transaction commits |
 | **Concurrency** | `@Version` optimistic locking; conflicting moves return `409` and clients resync |
 | **Activity log** | Durable audit trail, paginated, streamed live to the feed |
-| **Ordering** | Fractional positions â€” a drag rewrites one row instead of re-indexing siblings |
+| **Ordering** | Fractional positions - a drag rewrites one row instead of re-indexing siblings |
 | **Resilience** | Clients refetch board state on reconnect and after a lost write race |
 
 ---
@@ -68,7 +68,7 @@ Two rules shape the design:
 ### Ordering model
 
 `board_lists.position` and `cards.position` are `DOUBLE PRECISION` fractional
-indices. Inserting between `A` and `B` writes `(A + B) / 2` â€” one row updated
+indices. Inserting between `A` and `B` writes `(A + B) / 2` - one row updated
 instead of `O(n)` re-indexing. `@Version` columns on `cards` and `board_lists`
 turn concurrent writes into a `409` rather than a lost update.
 
@@ -120,7 +120,7 @@ turn concurrent writes into a `409` rather than a lost update.
 ### 1. Database
 
 Create a database and a role. The schema itself is created by Flyway on first
-boot â€” you do not need to run any DDL.
+boot - you do not need to run any DDL.
 
 ```sql
 CREATE DATABASE taskboard;
