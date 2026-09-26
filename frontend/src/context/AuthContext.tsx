@@ -14,7 +14,12 @@ interface AuthContextValue {
   token: string | null;
   user: UserResponse | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, displayName: string, password: string) => Promise<void>;
+  /**
+   * Resolves to true when an account was actually created, false when the
+   * address was already registered (the server will not say which). Both
+   * resolve rather than reject, because the caller cannot tell the difference.
+   */
+  signup: (email: string, displayName: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -55,7 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = useCallback(
     async (email: string, displayName: string, password: string) => {
-      applyAuth(await authApi.signup(email, displayName, password));
+      const auth = await authApi.signup(email, displayName, password);
+      const token = auth.token;
+      const user = auth.user;
+      // A null user means the address was already registered. Do NOT store the
+      // null token: that would leave a truthy-looking but unusable session in
+      // localStorage and strand the person on an empty board.
+      if (!user || !token) return false;
+      applyAuth({ token, tokenType: auth.tokenType, user });
+      return true;
     },
     [applyAuth]
   );

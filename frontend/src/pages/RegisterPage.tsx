@@ -21,9 +21,19 @@ export default function RegisterPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      await signup(email, displayName, password);
-      push('Account created — welcome to FlowBoard!');
-      navigate('/boards');
+      const created = await signup(email, displayName, password);
+      if (created) {
+        push('Account created — welcome to FlowBoard!');
+        navigate('/boards');
+      } else {
+        // The server answers 201 either way so it cannot be used to discover
+        // which addresses are registered. Do not claim the account was made.
+        push(
+          'If that email was free, your account is ready — otherwise it already exists. Try signing in.',
+          'error'
+        );
+        navigate('/login');
+      }
     } catch (err) {
       push(apiError(err), 'error');
     } finally {

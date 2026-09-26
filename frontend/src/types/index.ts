@@ -12,6 +12,17 @@ export interface AuthResponse {
   user: UserResponse;
 }
 
+/**
+ * Sign-up response. `user` and `token` are null when the email was already
+ * registered: the server answers 201 either way so it does not leak which
+ * addresses exist, and hands back no session in that case.
+ */
+export interface SignupResponse {
+  token: string | null;
+  tokenType: string;
+  user: UserResponse | null;
+}
+
 // ---------- Users ----------
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 

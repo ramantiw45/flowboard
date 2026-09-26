@@ -10,13 +10,16 @@ $password = 'Passw0rd!23'
 $displayName = 'Raman QA'
 
 $signupBody = @{ email = $email; displayName = $displayName; password = $password } | ConvertTo-Json
-try {
-  $auth = Invoke-RestMethod -Method Post -Uri "$base/auth/signup" -ContentType 'application/json' -Body $signupBody
+# Sign-up answers 201 even when the address is already registered (it no longer
+# reveals which addresses exist), so a successful call is not proof the account
+# was created. Fall back to sign-in whenever the response has no user.
+$auth = Invoke-RestMethod -Method Post -Uri "$base/auth/signup" -ContentType 'application/json' -Body $signupBody
+if ($auth.user) {
   Write-Output 'auth: signed up new QA user'
-} catch {
+} else {
   $loginBody = @{ email = $email; password = $password } | ConvertTo-Json
   $auth = Invoke-RestMethod -Method Post -Uri "$base/auth/login" -ContentType 'application/json' -Body $loginBody
-  Write-Output 'auth: logged in existing QA user'
+  Write-Output 'auth: address already registered, logged in existing QA user'
 }
 
 $headers = @{ Authorization = "Bearer $($auth.token)" }

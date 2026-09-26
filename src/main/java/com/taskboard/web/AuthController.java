@@ -24,9 +24,16 @@ public class AuthController {
 
     private final AuthService authService;
 
+    /**
+     * Creates an account, or reports success without revealing that the address
+     * was already registered. Always 201 with the same field set; see
+     * {@link AuthService#signupQuiet}. A {@code null} user in the body means
+     * "we cannot tell you which happened", and the client sends the person to
+     * sign in rather than pretending the account was created.
+     */
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.signup(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.signupQuiet(request));
     }
 
     @PostMapping("/login")

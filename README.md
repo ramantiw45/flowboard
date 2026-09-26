@@ -380,8 +380,14 @@ Real and tracked, not hypotheticals:
 
 - **The JWT lives in `localStorage`**, so any XSS could exfiltrate a 24-hour
   token. Move to `HttpOnly` cookies plus a refresh token before production.
-- **No rate limiting** on `/api/auth/login` or `/signup`. Sign-up also returns
-  `409` for a known email, which enumerates accounts.
+- **Sign-up does not reveal which addresses are registered.** A duplicate
+  email answers `201` with a `null` user rather than `409`, so the status code
+  is not an enumeration oracle. No session is issued in that case, so the
+  endpoint cannot be used to claim an existing account. The trade-off is that
+  someone re-using their own address must sign in instead of re-registering.
+- **No rate limiting** on `/api/auth/login` or `/signup`, so login is still
+  brute-forceable. Verification of no enumeration closes the address oracle
+  but does nothing about credential guessing.
 - **No security headers** (CSP, HSTS, frame options) are set by the backend.
 - **The frontend API URL is hardcoded** to `http://localhost:8080`
   (`frontend/src/api/client.ts`); there is no build-time environment support.

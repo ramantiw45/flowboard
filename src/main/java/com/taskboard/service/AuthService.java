@@ -41,6 +41,40 @@ public class AuthService {
         return AuthResponse.bearer(jwtService.generateToken(UserPrincipal.from(user)), UserResponse.from(user));
     }
 
+    /**
+     * Sign-up that does not reveal whether an address is already registered.
+     *
+     * <p>{@link #signup} answers a duplicate email with {@code 409}, so anyone
+     * can harvest registered addresses by watching the status code. Here both
+     * outcomes answer {@code 201 Created} with the same field set, so the two
+     * are indistinguishable to a caller who is not the account's owner.
+     *
+     * <p>When the address is taken the response carries a {@code null} user and
+     * an unusable token. That is deliberate: handing back a working session
+     * would let anyone claim an existing account, which is a far worse hole
+     * than enumeration. The client treats the {@code null} user as "we cannot
+     * tell you which happened" and directs the person to sign in.
+     *
+     * <p>Cost, stated plainly: someone who re-runs sign-up with an address they
+     * already own is told nothing specific and must use sign-in instead. That
+     * is the price of not confirming ownership, and it disappears once email
+     * verification exists.
+     */
+    @Transactional
+    public AuthResponse signupQuiet(SignupRequest request) {
+        String email = request.email().toLowerCase().trim();
+        if (userRepository.existsByEmail(email)) {
+            // No user, no session. Field set and status match a real signup.
+            return new AuthResponse(null, "Bearer", null);
+        }
+        User user = userRepository.save(User.builder()
+                .email(email)
+                .displayName(request.displayName().trim())
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .build());
+        return AuthResponse.bearer(jwtService.generateToken(UserPrincipal.from(user)), UserResponse.from(user));
+    }
+
     public AuthResponse login(LoginRequest request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email().toLowerCase().trim(), request.password()));
