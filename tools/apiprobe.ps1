@@ -6,24 +6,70 @@
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080/api'
 $seed = Get-Content (Join-Path $PSScriptRoot '..\.uiqa\seed.json') -Raw | ConvertFrom-Json
+
+# The API is CSRF-protected (double submit): a write needs the XSRF-TOKEN cookie
+# AND the same value in an X-XSRF-TOKEN header. Without this, every POST below
+# answers 403 and the probe silently stops testing anything - including the
+# NON-member checks, which would then look like passes.
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$null = Invoke-WebRequest -Uri "$base/auth/me" -Headers @{ Authorization = "Bearer $($seed.token)" } `
+  -WebSession $session -UseBasicParsing
+
+function Get-Xsrf {
+  $c = $session.Cookies.GetCookies($base) | Where-Object { $_.Name -eq 'XSRF-TOKEN' }
+  if (-not $c) { throw 'server did not issue an XSRF-TOKEN cookie' }
+  $c.Value
+}
+
 $A = @{ Authorization = "Bearer $($seed.token)"; 'Content-Type' = 'application/json' }
 $boardId = $seed.boardId
 
-function Probe([string]$label, [string]$method, [string]$url, [hashtable]$headers, [string]$body) {
+function Probe([string]$label, [string]$method, [string]$url, [hashtable]$headers, $body) {
   try {
-    $p = @{ Method = $method; Uri = $url; UseBasicParsing = $true }
-    if ($headers) { $p.Headers = $headers }
-    if ($null -ne $body) { $p.Body = $body }
-    $r = Invoke-WebRequest @p
+    # A copy per call: the CSRF token is rotated by the server, so it has to be
+    # re-read for each write rather than captured once.
+    $h = @{}
+    if ($headers) { foreach ($k in $headers.Keys) { $h[$k] = $headers[$k] } }
+    # Content-Type on a bodyless GET makes HttpClient throw
+    # ProtocolViolationException ("Cannot send a content-body with this
+    # verb-type"), which the catch then reported as "-> 0". Drop it for GETs.
+    if ($method -eq 'GET') { $h.Remove('Content-Type') }
+    if ($method -ne 'GET' -and $h.ContainsKey('Authorization')) { $h['X-XSRF-TOKEN'] = Get-Xsrf }
+    $p = @{ Method = $method; Uri = $url; UseBasicParsing = $true; WebSession = $session; Headers = $h }
+# `$body` is untyped: PowerShell coerces a $null argument to an EMPTY STRING
+    # for a [string] parameter, so `$null -ne $body` was true and every GET
+    # sent an empty body. HttpClient rejects that with
+    # ProtocolViolationException, which the catch reported as "-> 0" - so every
+    # GET in this probe silently failed to test anything.
+    if ($null -ne $body -and "$body".Trim() -ne '') { $p.Body = $body }
+    $r = Invoke-WebRequest @p -ErrorAction Stop
     $snippet = ($r.Content -replace '\s+', ' ')
     if ($snippet.Length -gt 150) { $snippet = $snippet.Substring(0, 150) + '...' }
     Write-Host ("{0,-50} -> {1}  {2}" -f $label, [int]$r.StatusCode, $snippet)
+    # Returned so callers can chain on a created resource (e.g. a board id).
+    if ($r.Content) { return ($r.Content | ConvertFrom-Json) }
   } catch {
-    $code = [int]$_.Exception.Response.StatusCode
+    # Read the status before touching the body: the response stream can only be
+    # consumed once, and a failed read of it used to leave $code at 0, which
+    # printed a misleading "-> 0" for every ordinary 401.
+    $code = 0
+    try { $code = [int]$_.Exception.Response.StatusCode } catch {}
     $detail = ''
-    try { $detail = (New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch {}
+    try {
+      $stream = $_.Exception.Response.GetResponseStream()
+      if ($stream) {
+        $reader = New-Object System.IO.StreamReader($stream)
+        $detail = $reader.ReadToEnd()
+        $reader.Close()
+      }
+    } catch {}
     $detail = ($detail -replace '\s+', ' ')
     if ($detail.Length -gt 150) { $detail = $detail.Substring(0, 150) + '...' }
+    # Name the exception when there is no status at all, so a "-> 0" line is
+    # diagnosable rather than just wrong.
+    if ($code -eq 0) {
+      $detail = "$detail  [$($_.Exception.GetType().Name): $($_.Exception.Message)]"
+    }
     Write-Host ("{0,-50} -> {1}  {2}" -f $label, $code, $detail)
   }
 }
@@ -80,7 +126,12 @@ Probe 'DELETE list as NON-member' 'DELETE' "$base/boards/$boardId/lists/$($list.
 if ($card) { Probe 'PATCH card as NON-member' 'PATCH' "$base/boards/$boardId/cards/$($card.id)" $B '{"title":"hijacked"}' }
 if ($card) { Probe 'DELETE card as NON-member' 'DELETE' "$base/boards/$boardId/cards/$($card.id)" $B $null }
 
-$attBoard = Invoke-RestMethod -Method Post -Uri "$base/boards" -Headers $B -ContentType 'application/json' -Body '{"name":"Attacker board"}'
+# Through Probe rather than Invoke-RestMethod so the CSRF token is attached.
+# A direct call here answers 403, leaving $attBoard null and making the IDOR
+# checks below compare against an empty board id - a false pass.
+$attBoard = $null
+$attBoardJson = Probe 'POST board (attacker, setup)' 'POST' "$base/boards" $B '{"name":"Attacker board"}'
+if ($attBoardJson) { $attBoard = $attBoardJson | ConvertFrom-Json }
 if ($card) {
   Probe 'MOVE victim card via attacker board (IDOR)' 'PATCH' "$base/boards/$($attBoard.id)/cards/$($card.id)/move" $B (@{ toListId = $list.id; targetIndex = 0 } | ConvertTo-Json)
   Probe 'DELETE victim card via attacker board (IDOR)' 'DELETE' "$base/boards/$($attBoard.id)/cards/$($card.id)" $B $null
