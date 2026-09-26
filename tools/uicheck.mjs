@@ -803,31 +803,57 @@ async function runDropAccuracy(s) {
     target = refreshed.find((l) => l.id === target.id);
   }
 
-  const CASES = [
-    { label: 'top of target', slot: 0 },
-    { label: 'middle of target', slot: Math.floor(target.titles.length / 2) },
-    { label: 'bottom of target', slot: target.titles.length },
+  // The target list grows as earlier cases drop cards into it, so the expected
+  // slot has to be computed against the live state, not a startup snapshot.
+  const SLOTS = [
+    { label: 'top of target', pick: (n) => 0 },
+    { label: 'middle of target', pick: (n) => Math.floor(n / 2) },
+    { label: 'bottom of target', pick: (n) => n },
   ];
 
   let pass = 0;
-  for (const c of CASES) {
+  for (const c of SLOTS) {
+    const live = (await serverOrder()).find((l) => l.id === target.id);
+    const slot = c.pick(live.titles.length);
     const geometry = await s.evaluate(`(() => {
       const drops = [...document.querySelectorAll('[data-rfd-droppable-id]')]
         .filter((d) => d.getAttribute('data-rfd-droppable-id') !== 'board');
       const targetDrop = drops.find((d) => d.getAttribute('data-rfd-droppable-id') === ${JSON.stringify(target.id)});
       if (!targetDrop) return JSON.stringify({ error: 'target droppable missing' });
-      const cards = [...targetDrop.querySelectorAll('[data-rfd-draggable-id]')];
+      let cards = [...targetDrop.querySelectorAll('[data-rfd-draggable-id]')];
+      // A user scrolls the destination into view before dropping; aiming at a
+      // card that is clipped outside the scroll viewport is not a real gesture.
+      if (cards.length) {
+        const probe = cards[Math.min(${slot}, cards.length - 1)];
+        probe.scrollIntoView({ block: 'nearest' });
+        cards = [...targetDrop.querySelectorAll('[data-rfd-draggable-id]')];
+      }
       const tb = targetDrop.getBoundingClientRect();
       let y;
-      if (cards.length === 0) { y = tb.y + 20; }
-      else if (${c.slot} >= cards.length) { const l = cards[cards.length-1].getBoundingClientRect(); y = l.y + l.height + 6; }
-      else { const r = cards[${c.slot}].getBoundingClientRect(); y = r.y + r.height / 2; }
-      // Always drag the first card of the first list.
-      const sourceDrop = drops.find((d) => d.getAttribute('data-rfd-droppable-id') === ${JSON.stringify(source.id)});
+      if (cards.length === 0) {
+        y = tb.y + 20;
+      } else if (${slot} >= cards.length) {
+        // Aim past the midpoint of the last card so the drop resolves to the
+        // end, but still INSIDE the card: a pixel below it lands on the column
+        // footer, where the library has no valid drop position and cancels.
+        const l = cards[cards.length - 1].getBoundingClientRect();
+        y = l.y + l.height * 0.75;
+      } else {
+        const r = cards[${slot}].getBoundingClientRect();
+        y = r.y + r.height / 2;
+      }
+      // Always drag the first card of the first list that still has one.
+      const sourceDrop = drops.find((d) => {
+        const c = d.querySelector('[data-rfd-draggable-id]');
+        return c && d.getAttribute('data-rfd-droppable-id') !== ${JSON.stringify(target.id)};
+      });
+      if (!sourceDrop) return JSON.stringify({ error: 'no source card' });
       const sc = sourceDrop.querySelector('[data-rfd-draggable-id]');
+      sc.scrollIntoView({ block: 'nearest' });
       const sb = sc.getBoundingClientRect();
       return JSON.stringify({
         card: sc.innerText.split('\\n')[0].slice(0, 40),
+        visible: y >= tb.top - 2 && y <= tb.bottom + 2,
         from: { x: sb.x + sb.width / 2, y: sb.y + sb.height / 2 },
         to: { x: tb.x + tb.width / 2, y },
       });
@@ -841,14 +867,11 @@ async function runDropAccuracy(s) {
     const after = await serverOrder();
     const landed = after.find((l) => l.id === target.id);
     const idx = landed ? landed.titles.indexOf(g.card) : -1;
-    // Server clamps to the "slot among the other cards"; after removing the
-    // dragged card, dropping at slot k should land at index k.
-    const ok = idx === c.slot;
+    const ok = idx === slot;
     if (ok) pass++;
-    console.log(`[${c.label}] dropped "${g.card}" -> server index ${idx} (expected ${c.slot}) ${ok ? 'OK' : 'MISMATCH'}`);
-    if (!ok) console.log(`   target now: ${JSON.stringify(landed?.titles)}`);
+    console.log(`[${c.label}] "${g.card}" -> index ${idx} (expected ${slot}) targetPixelVisible=${g.visible} ${ok ? 'OK' : 'MISMATCH'}`);
   }
-  console.log(`\ndrop accuracy: ${pass}/${CASES.length}`);
+  console.log(`\ndrop accuracy: ${pass}/${SLOTS.length}`);
   await s.shot('24-drop-accuracy');
 }
 

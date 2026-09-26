@@ -368,9 +368,11 @@ Real and tracked, not hypotheticals:
 - **`ADMIN` is unreachable** because invites always create a `MEMBER`.
 - **No card virtualisation**: very large lists render every card and re-render
   on each event.
-- **`@hello-pangea/dnd` logs a nested-scroll-container warning** because a
-  Kanban board needs both a horizontal board scroller and per-column vertical
-  scrollers. Drop-index accuracy is covered by `uicheck.mjs droptest`.
+- **`@hello-pangea/dnd` warns about nested scroll containers** because a Kanban
+  board needs both a horizontal board scroller and per-column vertical
+  scrollers. Drops onto a card's centre and the top of a list land exactly, but
+  a drop at the very bottom edge of a long, internally-scrolling column can
+  land a few slots short. `uicheck.mjs droptest` reproduces it.
 
 ---
 
