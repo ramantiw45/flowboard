@@ -1,7 +1,13 @@
 # Seeds a QA user, board, lists and cards through the real REST API.
 # Writes .uiqa/seed.json for the browser harness.
+#
+# Usage: powershell -ExecutionPolicy Bypass -File tools\seed.ps1 [-Base http://host:port/api]
+param(
+  # API base URL. Overridable so the harness can point at a non-default backend.
+  [string]$Base = 'http://localhost:8080/api'
+)
 $ErrorActionPreference = 'Stop'
-$base = 'http://localhost:8080/api'
+$base = $Base.TrimEnd('/')
 $outDir = Join-Path $PSScriptRoot '..\.uiqa'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 

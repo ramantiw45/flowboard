@@ -1,10 +1,23 @@
 import axios, { AxiosError } from 'axios';
+import { resolveEndpoints } from '../config/endpoints';
 
 export const TOKEN_KEY = 'taskboard.token';
 export const USER_KEY = 'taskboard.user';
 
-export const API_BASE_URL = 'http://localhost:8080/api';
-export const WS_URL = 'http://localhost:8080/ws-board';
+/**
+ * Endpoints come from the build-time environment, defaulting to the values that
+ * were previously hardcoded, so local development is unchanged.
+ */
+const { apiBaseUrl: API_BASE_URL, wsUrl: WS_URL } = resolveEndpoints(
+  {
+    VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+    VITE_WS_URL: import.meta.env.VITE_WS_URL,
+  },
+  // Only matters for a relative VITE_API_BASE_URL (same-origin reverse proxy).
+  typeof window === 'undefined' ? undefined : window.location.origin
+);
+
+export { API_BASE_URL, WS_URL };
 
 /** Shared axios instance — JWT request interceptor + 401 auto-logout. */
 export const api = axios.create({

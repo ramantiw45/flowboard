@@ -1,64 +1,16 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
 // `global: 'window'` polyfill is required by sockjs-client in the browser.
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { buildCsp, resolveEndpoints } from './src/config/endpoints';
 
 /**
- * Content-Security-Policy for the document.
- *
- * The backend is a pure JSON API and serves no HTML, so a CSP set there would
- * never be evaluated by a browser. The policy that actually protects the app
- * has to travel with the document, which is why it is defined here and applied
- * to the dev/preview server AND injected into the production build.
- *
- * The directives are derived from what the app actually loads, not guesses:
- *  - `script-src` omits 'unsafe-inline' and 'unsafe-eval'. There is no inline
- *    <script> and no eval()/new Function() anywhere in src, so neither is
- *    needed.
- *  - `style-src` keeps 'unsafe-inline' because React sets inline style
- *    attributes, and Google Fonts is loaded as a stylesheet.
- *  - `connect-src` lists the API and the SockJS/STOMP endpoint, both of which
- *    default to http://localhost:8080 per src/api/client.ts. Both must stay in
- *    step with API_BASE_URL/WS_URL; tools/cspcheck.mjs fails when they do not,
- *    because a stale origin here silently breaks every fetch and socket.
+ * Sends the CSP as a response header while the dev/preview server runs.
+ * The policy is built from the same resolved endpoints the app calls, so the
+ * two cannot drift (see src/config/endpoints.ts).
  */
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data:",
-  "connect-src 'self' http://localhost:8080 ws://localhost:8080",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
-
-/**
- * The same policy minus header-only directives, for the <meta> copy.
- * `frame-ancestors` is dropped because a browser logs an error and ignores it
- * when it arrives via <meta>; X-Frame-Options from the backend covers any page
- * the backend serves.
- */
-const CSP_META = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data:",
-  "connect-src 'self' http://localhost:8080 ws://localhost:8080",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ');
-
-/** Sends the CSP as a response header while the dev/preview server runs. */
-function cspDevServer(): Plugin {
+function cspDevServer(csp: string): Plugin {
   const apply = (_req: unknown, res: { setHeader(k: string, v: string): void }, next: () => void) => {
-    res.setHeader('Content-Security-Policy', CSP);
+    res.setHeader('Content-Security-Policy', csp);
     next();
   };
   return {
@@ -80,7 +32,7 @@ function cspDevServer(): Plugin {
  * exists so a plain `vite build` plus any static host is not left with no
  * policy at all.
  */
-function cspMetaTag(): Plugin {
+function cspMetaTag(cspMeta: string): Plugin {
   return {
     name: 'csp-meta-tag',
     transformIndexHtml: {
@@ -91,7 +43,7 @@ function cspMetaTag(): Plugin {
           tags: [
             {
               tag: 'meta',
-              attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP_META },
+              attrs: { 'http-equiv': 'Content-Security-Policy', content: cspMeta },
               injectTo: 'head-prepend' as const,
             },
           ],
@@ -101,12 +53,23 @@ function cspMetaTag(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), cspDevServer(), cspMetaTag()],
-  define: {
-    global: 'window',
-  },
-  server: {
-    port: 5173,
-  },
+export default defineConfig(({ mode }) => {
+  // Empty prefix: these are read directly rather than through import.meta.env,
+  // so the config and the app resolve them from one function.
+  const env = loadEnv(mode, process.cwd(), '');
+  const { apiBaseUrl, wsUrl } = resolveEndpoints(env);
+
+  return {
+    plugins: [
+      react(),
+      cspDevServer(buildCsp(apiBaseUrl, wsUrl)),
+      cspMetaTag(buildCsp(apiBaseUrl, wsUrl, { meta: true })),
+    ],
+    define: {
+      global: 'window',
+    },
+    server: {
+      port: 5173,
+    },
+  };
 });
