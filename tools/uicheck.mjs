@@ -168,6 +168,10 @@ class Session {
   }
 
   async goto(path, settle = 1500) {
+    // Let any in-flight page load finish first. Navigating twice in quick
+    // succession aborts the command that is waiting on the first, which surfaces
+    // as CDP's "Inspected target navigated or closed".
+    await sleep(300);
     await this.send('Page.navigate', { url: `${APP_URL}${path}` });
     await sleep(settle);
   }
@@ -490,6 +494,10 @@ async function runMeasure(s) {
 
 async function runRealtime(s) {
   await s.setSession();
+  // setSession navigates to /login to obtain the cookie; navigating again
+  // immediately can race that load and abort the CDP command in flight
+  // ("Inspected target navigated or closed"). Let it settle first.
+  await sleep(400);
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
   const countCards = () =>
@@ -853,6 +861,114 @@ async function runCreateBoard(s) {
 }
 
 /**
+ * Card virtualisation: how many cards does the DOM actually hold, and is the
+ * rest of the list still reachable?
+ *
+ * The claim being checked is not "the list scrolls" - it always did. It is that
+ * a long list does not render every card, and that scrolling still reaches the
+ * end. `rendered` is counted from the DOM, not from React state, so it measures
+ * what the browser is actually paying for.
+ *
+ * Env: QA_SCALE_BOARD_ID (a board with a long column), QA_SCALE_EXPECTED.
+ */
+async function runScale(s) {
+  await s.setSession();
+  const boardId = process.env.QA_SCALE_BOARD_ID ?? BOARD_ID;
+  const expected = Number(process.env.QA_SCALE_EXPECTED ?? 0);
+  await s.goto(`/boards/${boardId}`, 3500);
+
+  // Find the *longest* column, not just the first droppable: the board
+  // droppable is also a [data-rfd-droppable-id] and is never the one that
+  // virtualises.
+  const before = await s.evaluate(`(() => {
+    const all = [...document.querySelectorAll('[data-rfd-droppable-id]')];
+    const longest = all.reduce((a, b) => (b.scrollHeight > a.scrollHeight ? b : a), all[0]);
+    return JSON.stringify({
+      totalCards: document.querySelectorAll('[data-rfd-draggable-id]').length,
+      listCards: longest ? longest.querySelectorAll('[data-rfd-draggable-id]').length : 0,
+      scrollHeight: longest?.scrollHeight ?? 0,
+      clientHeight: longest?.clientHeight ?? 0,
+    });
+  })()`);
+  const b = JSON.parse(before);
+  console.log(
+    `rendered cards: ${b.totalCards} total, ${b.listCards} in the longest column ` +
+      `(scrollHeight=${b.scrollHeight} clientHeight=${b.clientHeight})`
+  );
+
+  // Scroll to the very end and confirm the last card is reachable.
+  const end = await s.evaluate(`(() => {
+    const d = document.querySelector('[data-rfd-droppable-id]');
+    d.scrollTop = d.scrollHeight;
+    return new Promise((r) => setTimeout(() => {
+      const cards = d.querySelectorAll('[data-rfd-draggable-id]');
+      r(JSON.stringify({
+        atEnd: d.scrollTop + d.clientHeight >= d.scrollHeight - 2,
+        rendered: cards.length,
+        lastText: cards.length ? cards[cards.length - 1].innerText.split('\\n')[0] : null,
+      }));
+    }, 500));
+  })()`);
+  const e = JSON.parse(end);
+  console.log(
+    `after scrolling to the end: atEnd=${e.atEnd} rendered=${e.rendered} last="${e.lastText}"`
+  );
+  await s.shot('24-virtualised-end-of-list');
+
+  if (expected > 0) {
+    if (b.listCards >= expected) {
+      session.problems.push(
+        `scale: ${b.listCards} cards in the DOM, expected fewer than ${expected} - no virtualisation?`
+      );
+    } else {
+      console.log(
+        `virtualisation: ${b.listCards} of ${expected} cards in the DOM ` +
+          `(${Math.round((b.listCards / expected) * 100)}%)`
+      );
+    }
+  }
+  if (!e.atEnd) session.problems.push('scale: could not scroll to the end of the list');
+  if (e.rendered === 0) session.problems.push('scale: nothing rendered after scrolling to the end');
+
+  // Drag inside the virtualised column. The drop-accuracy check runs on a short
+  // list that never virtualises, so on its own it would not exercise the window
+  // at all - this is the case that could actually be broken, where the indices
+  // the library reports have to account for the cards scrolled out above.
+  await s.goto(`/boards/${boardId}`, 3000);
+  const g = await s.evaluate(`(() => {
+    // Pick the *card* columns, not the board droppable. The board droppable is
+    // also a [data-rfd-droppable-id] and its draggables are the columns, so
+    // matching on it would drag a list rather than a card.
+    const lists = [...document.querySelectorAll('[data-rfd-droppable-id]')]
+      .filter((d) => {
+        const cs = getComputedStyle(d);
+        return cs.overflowY === 'auto' && d.querySelectorAll('[data-rfd-draggable-id]').length > 3;
+      });
+    if (!lists.length) return JSON.stringify({ error: 'no populated card list' });
+    const source = lists[0];
+    const target = lists[1] || source;
+    const card = source.querySelector('[data-rfd-draggable-id]');
+    if (!card) return JSON.stringify({ error: 'no card' });
+    const sb = card.getBoundingClientRect();
+    const tb = target.getBoundingClientRect();
+    return JSON.stringify({
+      from: { x: sb.x + sb.width / 2, y: sb.y + sb.height / 2 },
+      to: { x: tb.x + tb.width / 2, y: tb.y + 60 },
+      title: card.innerText.split('\\n')[0].slice(0, 30),
+    });
+  })()`);
+  const geom = JSON.parse(g);
+  if (geom.error) {
+    session.problems.push(`scale drag: ${geom.error}`);
+    return;
+  }
+  await s.dragTo(geom.from, geom.to, 20);
+  await sleep(2500);
+  console.log(`virtualised drag: moved "${geom.title}" - problems so far ${session.problems.length}`);
+  await s.shot('25-virtualised-drag');
+}
+
+/**
  * Drop-accuracy check: drag a card to a precise slot and compare where it
  * actually landed (server order) with where it was dropped.
  *
@@ -976,6 +1092,7 @@ const session = await connect();
 if (scenario === 'login') await runLogin(session);
 else if (scenario === 'register') await runRegister(session);
 else if (scenario === 'dashboard') await runDashboard(session);
+else if (scenario === 'scale') await runScale(session);
 else if (scenario === 'board') await runBoard(session);
 else if (scenario === 'listmenu') await runListMenu(session);
 else if (scenario === 'measure') await runMeasure(session);

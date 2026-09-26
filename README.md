@@ -415,6 +415,9 @@ node tools/uicheck.mjs droptest    # assert drops land on the expected index
 node tools/uicheck.mjs dndfix      # measure cursor-to-card offset during a drag
 node tools/uicheck.mjs coldrag     # assert the column grip starts a drag
 node tools/uicheck.mjs createboard # assert the dashboard refreshes after a create
+# Virtualisation: needs a board with a long column.
+$env:QA_SCALE_BOARD_ID=...; $env:QA_SCALE_EXPECTED=40
+node tools/uicheck.mjs scale       # assert few cards are in the DOM and the end is reachable
 
 # Drop-index diagnostics: sweep the aim point and print the resulting index.
 node tools/dropcurve.mjs           # response curve across a target column
@@ -508,8 +511,13 @@ Real and tracked, not hypotheticals:
 - **The activity feed pages on demand** ("Load older activity", 30 rows a page) and
   keeps a 300-row client buffer. Rows beyond the buffer are still reachable by
   paging; live events stop at the buffer edge.
-- **No card virtualisation**: very large lists render every card and re-render
-  on each event.
+- **Card virtualisation only kicks in above 15 cards** in a column, and assumes a
+  roughly constant card height (measured from the first card rendered). Cards
+  whose titles wrap to the full three lines will make the scroll height drift
+  slightly from the true content height. Columns below the threshold render
+  normally, which is why `uicheck.mjs droptest` (3/3) is unaffected - it runs on
+  a short list. Variable-height windowing would need a real measurement cache
+  rather than a single stride.
 - **`@hello-pangea/dnd` warns about nested scroll containers** because a Kanban
   board needs both a horizontal board scroller and per-column vertical
   scrollers. The warning is cosmetic in this layout: measured with

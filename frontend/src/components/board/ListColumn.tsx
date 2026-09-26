@@ -1,14 +1,42 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
-import { type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
+import { useCallback, useState, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  type DraggableChildrenFn,
+  type DraggableProvidedDragHandleProps,
+} from '@hello-pangea/dnd';
 import { Droppable } from '@hello-pangea/dnd';
 import { Check, GripVertical, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CardData, ListData } from '../../types';
 import { useClickOutside } from '../../hooks/useClickOutside';
+import { useVirtualWindow } from '../../hooks/useVirtualWindow';
 import { listAccent } from '../../utils/theme';
 import Button from '../ui/Button';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { TextArea } from '../ui/Field';
-import CardItem from './CardItem';
+import CardItem, { CardFace } from './CardItem';
+
+/**
+ * Card count above which a column is windowed.
+ *
+ * Below this the plain (standard) rendering is used, deliberately. Windowing is
+ * only a win when there is a meaningful number of cards to avoid, and keeping
+ * short columns on the simple path means the common case - a board with a few
+ * cards in each column - behaves exactly as it did before, with no dependence on
+ * the windowing maths. A bug in that maths therefore cannot affect ordinary
+ * boards, and the drop-accuracy check runs against a short list.
+ */
+const VIRTUALISATION_THRESHOLD = 15;
+
+/**
+ * Combines two ref callbacks into one.
+ *
+ * The droppable's own `innerRef` and the virtual window's scroll ref both need
+ * the same node, and React cannot attach two callbacks to one `ref` prop. Giving
+ * up either one is not an option: without the first the library cannot measure
+ * the droppable, and without the second the window never updates on scroll.
+ */
+function mergeRefs<T>(...refs: ((node: T | null) => void)[]) {
+  return (node: T | null) => refs.forEach((ref) => ref(node));
+}
 
 interface ListColumnProps {
   list: ListData;
@@ -39,6 +67,42 @@ export default function ListColumn({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [nudging, setNudging] = useState(false);
   const menuRef = useClickOutside<HTMLDivElement>(() => setMenuOpen(false), menuOpen);
+
+  const isVirtualised = list.cards.length > VIRTUALISATION_THRESHOLD;
+  const virtual = useVirtualWindow(list.cards.length, VIRTUALISATION_THRESHOLD);
+
+  /** The cards that should be mounted, given the current scroll window. */
+  const visibleCards = isVirtualised
+    ? list.cards.slice(virtual.start, virtual.end)
+    : list.cards;
+
+  /** True position of a card in the full list, which the library needs. */
+  const indexOf = (id: string) => list.cards.findIndex((c) => c.id === id);
+
+  /**
+   * The card being dragged, rendered in a portal so it can leave the window.
+   *
+   * In a virtual list the dragged card is normally unmounted once it scrolls
+   * out of the rendered window - which would make the drag preview vanish
+   * mid-gesture. `renderClone` is the library's answer: it renders this instead,
+   * outside the windowing, and follows the cursor.
+   */
+  const renderCardClone: DraggableChildrenFn = useCallback(
+    (provided) => {
+      // The clone only gets the draggable id, so the card has to be looked up.
+      // Falling back to the first card would show the wrong title mid-drag,
+      // which is worse than showing nothing.
+      const id = provided.draggableProps['data-rfd-draggable-id'];
+      const card = list.cards.find((c) => c.id === id);
+      if (!card) return null;
+      return (
+        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>
+          <CardFace card={card} dragging />
+        </div>
+      );
+    },
+    [list.cards]
+  );
 
   const cancelRename = () => {
     setRenameValue(list.name);
@@ -176,12 +240,28 @@ export default function ListColumn({
 
       {/* This Droppable is the ONLY vertical scroll parent in the column.
           `min-h-0` lets it shrink inside the flex column so long lists scroll
-          internally instead of stretching the whole board. */}
-      <Droppable droppableId={list.id} type="CARD">
+          internally instead of stretching the whole board.
+
+          `mode="virtual"` windows the cards: only those near the viewport are
+          in the DOM, and the library keeps the scroll height stable with
+          padding. Without it a 40-card column mounted 40 draggable components
+          each with a ref, and a live event re-rendered every one of them.
+
+          It is only enabled once a list is long enough to be worth the
+          complexity. Short columns keep the plain path so the common case has
+          no behavioural difference at all, and so a regression in the windowing
+          maths cannot affect a board with a handful of cards. */}
+      <Droppable
+        droppableId={list.id}
+        type="CARD"
+        mode={isVirtualised ? 'virtual' : 'standard'}
+        renderClone={isVirtualised ? renderCardClone : undefined}
+      >
         {(provided, snapshot) => (
           <div
-            ref={provided.innerRef}
+            ref={mergeRefs(provided.innerRef, virtual.scrollRef)}
             {...provided.droppableProps}
+            onScroll={virtual.onScroll}
             className={`thin-scrollbar-light min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2 ${
               snapshot.isDraggingOver ? 'rounded-lg bg-brand-500/10 ring-2 ring-inset ring-brand-400/40' : ''
             }`}
@@ -191,9 +271,26 @@ export default function ListColumn({
                 Drop cards here
               </div>
             )}
-            {list.cards.map((card, index) => (
-              <CardItem key={card.id} card={card} index={index} onOpen={onOpenCard} />
+            {/* Stand-ins for the cards above the window, so the scrollbar still
+                represents the whole list rather than the rendered slice. */}
+            {virtual.topSpacer > 0 && (
+              <div style={{ height: virtual.topSpacer }} aria-hidden="true" />
+            )}
+            {visibleCards.map((card) => (
+              <CardItem
+                key={card.id}
+                card={card}
+                // The library needs the card's position in the *whole* list,
+                // not in the rendered slice, or every index it reports would be
+                // off by however many cards are scrolled out above.
+                index={indexOf(card.id)}
+                onOpen={onOpenCard}
+                measureRef={virtual.itemRef}
+              />
             ))}
+            {virtual.bottomSpacer > 0 && (
+              <div style={{ height: virtual.bottomSpacer }} aria-hidden="true" />
+            )}
             {provided.placeholder}
           </div>
         )}
