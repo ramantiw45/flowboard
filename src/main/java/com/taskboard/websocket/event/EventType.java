@@ -14,5 +14,6 @@ public enum EventType {
     LIST_DELETED,
     MEMBER_ADDED,
     MEMBER_REMOVED,
+    MEMBER_UPDATED,
     ACTIVITY
 }

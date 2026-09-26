@@ -12,6 +12,9 @@ export interface AuthResponse {
   user: UserResponse;
 }
 
+// ---------- Users ----------
+export type MemberRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+
 // ---------- Boards ----------
 export interface BoardSummary {
   id: string;
@@ -24,8 +27,11 @@ export interface BoardMember {
   userId: string;
   email: string;
   displayName: string;
-  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  role: MemberRole;
 }
+
+/** Roles a client may assign. OWNER is fixed at board creation and never assignable. */
+export type AssignableRole = Exclude<MemberRole, 'OWNER'>;
 
 export interface CardData {
   id: string;
@@ -77,6 +83,7 @@ export type EventType =
   | 'LIST_DELETED'
   | 'MEMBER_ADDED'
   | 'MEMBER_REMOVED'
+  | 'MEMBER_UPDATED'
   | 'ACTIVITY';
 
 export interface BoardEvent<T = unknown> {

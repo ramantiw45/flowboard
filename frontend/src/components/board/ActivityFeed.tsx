@@ -32,10 +32,22 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
 interface ActivityFeedProps {
   open: boolean;
   activity: ActivityItem[];
+  /** True while an older page is in flight. */
+  loadingMore: boolean;
+  /** True when the server still has rows behind the last loaded page. */
+  hasMore: boolean;
+  onLoadMore: () => void;
   onClose: () => void;
 }
 
-export default function ActivityFeed({ open, activity, onClose }: ActivityFeedProps) {
+export default function ActivityFeed({
+  open,
+  activity,
+  loadingMore,
+  hasMore,
+  onLoadMore,
+  onClose,
+}: ActivityFeedProps) {
   if (!open) return null;
 
   return (
@@ -98,6 +110,18 @@ export default function ActivityFeed({ open, activity, onClose }: ActivityFeedPr
               );
             })}
           </ul>
+        )}
+
+        {activity.length > 0 && hasMore && (
+          <div className="border-t border-white/5 p-3">
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="w-full rounded-lg py-1.5 text-xs font-medium text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading…' : 'Load older activity'}
+            </button>
+          </div>
         )}
       </div>
     </aside>

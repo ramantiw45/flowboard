@@ -39,6 +39,20 @@ public class BoardAccessGuard {
         return membership;
     }
 
+    /**
+     * Requires the caller to be the board OWNER. Used for privilege changes:
+     * an ADMIN may invite colleagues as MEMBER, but only the OWNER may mint or
+     * revoke another ADMIN, otherwise an ADMIN could escalate a peer (or
+     * themselves via a second account) above the owner's intent.
+     */
+    public BoardMember requireOwner(UUID boardId, UUID userId) {
+        BoardMember membership = requireMembership(boardId, userId);
+        if (membership.getRole() != MemberRole.OWNER) {
+            throw new ForbiddenException("Only the board owner can change member roles");
+        }
+        return membership;
+    }
+
     /** Convenience for controllers that just need a 403/404 check. */
     public void assertMember(UUID boardId, UUID userId) {
         requireMembership(boardId, userId);

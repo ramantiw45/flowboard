@@ -9,11 +9,13 @@ import com.taskboard.board.BoardRepository;
 import com.taskboard.board.MemberRole;
 import com.taskboard.card.Card;
 import com.taskboard.card.CardRepository;
+import com.taskboard.common.exception.BadRequestException;
 import com.taskboard.common.exception.ConflictException;
 import com.taskboard.common.exception.ResourceNotFoundException;
 import com.taskboard.dto.board.BoardMemberResponse;
 import com.taskboard.dto.board.BoardResponse;
 import com.taskboard.dto.board.BoardSummary;
+import com.taskboard.dto.board.ChangeMemberRoleRequest;
 import com.taskboard.dto.board.CreateBoardRequest;
 import com.taskboard.dto.board.InviteMemberRequest;
 import com.taskboard.dto.list.ListResponse;
@@ -108,6 +110,16 @@ public class BoardService {
     public BoardMemberResponse inviteMember(UUID boardId, InviteMemberRequest request, UserPrincipal principal) {
         accessGuard.requireAdmin(boardId, principal.getId());
 
+        MemberRole requestedRole = request.roleOrDefault();
+        // OWNER is not grantable by invitation; ownership is not a role you hand out.
+        if (requestedRole == MemberRole.OWNER) {
+            throw new BadRequestException("OWNER cannot be assigned through an invite");
+        }
+        // Minting an ADMIN is an owner-level decision, not a peer one.
+        if (requestedRole == MemberRole.ADMIN) {
+            accessGuard.requireOwner(boardId, principal.getId());
+        }
+
         User invitee = userRepository.findByEmail(request.email().toLowerCase().trim())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No registered user with email " + request.email()));
@@ -117,17 +129,60 @@ public class BoardService {
         }
 
         Board board = boardRepository.getReferenceById(boardId);
-        board.addMember(invitee, MemberRole.MEMBER);
+        board.addMember(invitee, requestedRole);
         boardRepository.save(board);
 
         BoardMember membership = boardMemberRepository
                 .findByBoardIdAndUserId(boardId, invitee.getId()).orElseThrow();
 
         publishActivity(boardId, principal, ActivityType.MEMBER_INVITED,
-                principal.getDisplayName() + " invited " + invitee.getDisplayName() + " to the board");
+                principal.getDisplayName() + " invited " + invitee.getDisplayName()
+                        + " as " + requestedRole.name());
 
         BoardMemberResponse response = BoardMemberResponse.from(membership);
         eventPublisher.broadcast(boardId, EventType.MEMBER_ADDED, response);
+        return response;
+    }
+
+    /**
+     * Changes an existing member's role. OWNER-only, and the board's own OWNER
+     * row is immutable here: a board must always keep exactly one owner, and
+     * ownership transfer is deliberately out of scope for this endpoint.
+     */
+    @Transactional
+    public BoardMemberResponse changeMemberRole(UUID boardId, UUID targetUserId,
+                                                ChangeMemberRoleRequest request,
+                                                UserPrincipal principal) {
+        accessGuard.requireOwner(boardId, principal.getId());
+
+        MemberRole newRole = request.role();
+        if (newRole == MemberRole.OWNER) {
+            throw new BadRequestException(
+                    "Ownership transfer is not supported; the owner role is fixed");
+        }
+
+        BoardMember target = boardMemberRepository.findByBoardIdAndUserId(boardId, targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User " + targetUserId + " is not a member of board " + boardId));
+
+        if (target.getRole() == MemberRole.OWNER) {
+            throw new ConflictException("The board owner's role cannot be changed");
+        }
+        if (target.getRole() == newRole) {
+            return BoardMemberResponse.from(target);
+        }
+
+        MemberRole previousRole = target.getRole();
+        target.setRole(newRole);
+        boardMemberRepository.save(target);
+
+        publishActivity(boardId, principal, ActivityType.MEMBER_ROLE_CHANGED,
+                principal.getDisplayName() + " changed "
+                        + target.getUser().getDisplayName() + " from "
+                        + previousRole.name() + " to " + newRole.name());
+
+        BoardMemberResponse response = BoardMemberResponse.from(target);
+        eventPublisher.broadcast(boardId, EventType.MEMBER_UPDATED, response);
         return response;
     }
 

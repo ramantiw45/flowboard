@@ -9,6 +9,7 @@ public enum ActivityType {
     BOARD_RENAMED,
     MEMBER_INVITED,
     MEMBER_REMOVED,
+    MEMBER_ROLE_CHANGED,
     LIST_CREATED,
     LIST_RENAMED,
     LIST_DELETED,

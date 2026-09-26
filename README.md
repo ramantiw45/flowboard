@@ -35,6 +35,7 @@ STOMP-over-SockJS | React 18 | Vite | TypeScript | Tailwind CSS
 | **Boards** | Create, search, browse; per-board member roles (`OWNER` / `ADMIN` / `MEMBER`) |
 | **Columns** | Create, rename, reorder (drag or arrow keys), delete (admin/owner only) |
 | **Cards** | Create, edit title/description/priority, delete, drag between and within columns |
+| **Members** | Owner invites as `MEMBER` or `ADMIN` and promotes/demotes later; roles stream live |
 | **Real time** | Every mutation is broadcast to the board topic after the transaction commits |
 | **Concurrency** | `@Version` optimistic locking; conflicting moves return `409` and clients resync |
 | **Activity log** | Durable audit trail, paginated, streamed live to the feed |
@@ -207,7 +208,8 @@ Errors are RFC 7807 `application/problem+json`.
 | `POST` | `/api/boards` | authenticated |
 | `GET` | `/api/boards/{boardId}` | member |
 | `GET` | `/api/boards/{boardId}/members` | member |
-| `POST` | `/api/boards/{boardId}/members` | admin |
+| `POST` | `/api/boards/{boardId}/members` | admin (owner only for an `ADMIN` invite) |
+| `PATCH` | `/api/boards/{boardId}/members/{userId}/role` | owner |
 | `GET` | `/api/boards/{boardId}/activity?page=&size=` | member |
 
 ### Lists
@@ -281,7 +283,7 @@ Every broadcast uses the same envelope:
 | `CARD_DELETED` | card id, list id |
 | `LIST_CREATED` / `LIST_UPDATED` | list id, name, position, version |
 | `LIST_DELETED` | list id |
-| `MEMBER_ADDED` | member summary |
+| `MEMBER_ADDED` / `MEMBER_UPDATED` | member summary (add and role change) |
 | `ACTIVITY` | id, actor, type, message, timestamp |
 
 **Authorization.** `CONNECT` is validated for a live JWT, and every `SUBSCRIBE`
@@ -305,7 +307,8 @@ npm run build     # typecheck + production bundle
 ```
 
 Backend tests cover the STOMP channel's authentication and subscription
-authorization, plus the exception-to-status-code mapping.
+authorization, the exception-to-status-code mapping, and the member role rules
+(owner-only promotion, `ADMIN` escalation blocked, immutable owner row).
 
 ---
 
@@ -346,6 +349,10 @@ Screenshots are written to `.uiqa/`, which is git-ignored.
   24-hour token stays valid until it expires.
 - **Authorization** is centralised in `BoardAccessGuard` and applied to every
   board-scoped REST call *and* to STOMP `SUBSCRIBE` frames.
+- **Privilege changes are owner-only.** An `ADMIN` may invite colleagues as
+  `MEMBER`, but only the `OWNER` can mint or revoke an `ADMIN`, so an admin
+  cannot escalate a peer above the owner's intent. `OWNER` is never assignable
+  through the API and the board's owner row is immutable.
 - **Cross-board access** is re-checked at the entity level: a card or list id
   belonging to another board returns `404` rather than mutating it.
 - **Secrets** are environment-only; `JWT_SECRET` has no committed default.
@@ -363,9 +370,9 @@ Real and tracked, not hypotheticals:
 - **No security headers** (CSP, HSTS, frame options) are set by the backend.
 - **The frontend API URL is hardcoded** to `http://localhost:8080`
   (`frontend/src/api/client.ts`); there is no build-time environment support.
-- **The activity feed is capped** at one page (30 items) with an in-memory
-  ceiling of 100, and there is no "load more".
-- **`ADMIN` is unreachable** because invites always create a `MEMBER`.
+- **The activity feed pages on demand** ("Load older activity", 30 rows a page) and
+  keeps a 300-row client buffer. Rows beyond the buffer are still reachable by
+  paging; live events stop at the buffer edge.
 - **No card virtualisation**: very large lists render every card and re-render
   on each event.
 - **`@hello-pangea/dnd` warns about nested scroll containers** because a Kanban

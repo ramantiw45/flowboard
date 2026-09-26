@@ -5,8 +5,10 @@ import { CircleSlash } from 'lucide-react';
 import * as boardApi from '../api/boardApi';
 import * as cardApi from '../api/cardApi';
 import { apiError } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { mergeOlderPage, prependActivity } from '../utils/activityFeed';
 import { applyRemoteCardMove, moveCardOptimistic } from '../utils/boardState';
 import Button from '../components/ui/Button';
 import EmptyState from '../components/ui/EmptyState';
@@ -34,12 +36,16 @@ export default function BoardPage() {
   const { boardId = '' } = useParams();
   const { connected, subscribeBoard } = useWebSocket();
   const { push } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [boardName, setBoardName] = useState('');
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [lists, setLists] = useState<ListData[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  /** Page index of the next older slice, or null when history is exhausted. */
+  const [nextActivityPage, setNextActivityPage] = useState<number | null>(0);
+  const [loadingMoreActivity, setLoadingMoreActivity] = useState(false);
   const [feedOpen, setFeedOpen] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
@@ -90,8 +96,12 @@ export default function BoardPage() {
 
     // The activity feed is decorative: its failure must not blank the board.
     boardApi
-      .getActivity(boardId)
-      .then((items) => !cancelled && setActivity(items))
+      .getActivityPage(boardId)
+      .then((page) => {
+        if (cancelled) return;
+        setActivity(page.items);
+        setNextActivityPage(page.nextPage);
+      })
       .catch(() => undefined);
 
     return () => {
@@ -132,9 +142,7 @@ export default function BoardPage() {
           // Fall back to the envelope timestamp if the payload omits it.
           at: p.occurredAt ?? event.occurredAt,
         };
-        setActivity((prev) =>
-          prev.some((a) => a.id === p.id) ? prev : [item, ...prev].slice(0, 100)
-        );
+        setActivity((prev) => prependActivity(prev, item));
         break;
       }
       case 'CARD_CREATED': {
@@ -204,6 +212,13 @@ export default function BoardPage() {
       case 'MEMBER_ADDED': {
         const m = event.payload as BoardMember;
         setMembers((prev) => (prev.some((x) => x.userId === m.userId) ? prev : [...prev, m]));
+        break;
+      }
+      case 'MEMBER_UPDATED': {
+        // A role change: replace the entry so the owner's role controls and
+        // the header avatar stack reflect the new privilege immediately.
+        const m = event.payload as BoardMember;
+        setMembers((prev) => prev.map((x) => (x.userId === m.userId ? m : x)));
         break;
       }
       default:
@@ -316,6 +331,25 @@ export default function BoardPage() {
     },
     [boardId, push]
   );
+
+  /**
+   * Fetches the next slice of older history. The feed was previously capped at
+   * a single page with no way to reach anything behind it; paging is manual so
+   * a busy board does not refetch history nobody scrolls to.
+   */
+  const handleLoadMoreActivity = useCallback(async () => {
+    if (nextActivityPage === null || loadingMoreActivity) return;
+    setLoadingMoreActivity(true);
+    try {
+      const page = await boardApi.getActivityPage(boardId, nextActivityPage);
+      setActivity((prev) => mergeOlderPage(prev, page.items));
+      setNextActivityPage(page.nextPage);
+    } catch (err) {
+      push(apiError(err), 'error');
+    } finally {
+      setLoadingMoreActivity(false);
+    }
+  }, [boardId, nextActivityPage, loadingMoreActivity, push]);
 
   const handleCreateList = useCallback(
     async (name: string) => {
@@ -499,7 +533,14 @@ export default function BoardPage() {
           </div>
         </DragDropContext>
 
-        <ActivityFeed open={feedOpen} activity={activity} onClose={() => setFeedOpen(false)} />
+        <ActivityFeed
+          open={feedOpen}
+          activity={activity}
+          loadingMore={loadingMoreActivity}
+          hasMore={nextActivityPage !== null}
+          onLoadMore={() => void handleLoadMoreActivity()}
+          onClose={() => setFeedOpen(false)}
+        />
       </div>
 
       {selectedCard && (
@@ -517,6 +558,7 @@ export default function BoardPage() {
         open={inviteOpen}
         boardId={boardId}
         members={members}
+        currentUserId={user?.id ?? null}
         onClose={() => setInviteOpen(false)}
       />
     </div>
