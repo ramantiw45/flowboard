@@ -2,10 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildCsp, connectSources, DEFAULT_API_BASE_URL, resolveEndpoints } from './endpoints.ts';
 
-test('falls back to localhost:8080 when nothing is configured', () => {
+test('defaults to a relative, same-origin api url', () => {
+  // Relative by default, deliberately: a SameSite=Lax cookie is withheld from
+  // cross-site XHR, so an absolute default would store the session cookie and
+  // then never send it. The dev/preview servers proxy /api to the backend.
   const { apiBaseUrl, wsUrl } = resolveEndpoints({});
+  assert.equal(apiBaseUrl, '/api');
   assert.equal(apiBaseUrl, DEFAULT_API_BASE_URL);
-  assert.equal(wsUrl, 'http://localhost:8080/ws-board');
+  // The socket is relative too, so the handshake stays same-origin and carries
+  // the session cookie that authenticates it.
+  assert.equal(wsUrl, '/ws-board');
+});
+
+test('a relative api url still produces a relative socket url', () => {
+  const { wsUrl } = resolveEndpoints({ VITE_API_BASE_URL: '/api' }, 'https://app.example.com');
+  assert.equal(wsUrl, '/ws-board');
 });
 
 test('derives the websocket url from the api url', () => {
@@ -32,10 +43,12 @@ test('strips trailing slashes so axios does not join //auth/login', () => {
   assert.equal(wsUrl, 'wss://api.example.com/ws-board');
 });
 
-test('resolves a relative api url against the serving origin', () => {
+test('a relative api url keeps the socket relative', () => {
+  // Deliberate: an absolute socket URL would make the handshake cross-origin,
+  // and the browser would withhold the session cookie from it.
   const { apiBaseUrl, wsUrl } = resolveEndpoints({ VITE_API_BASE_URL: '/api' }, 'https://app.example.com');
   assert.equal(apiBaseUrl, '/api');
-  assert.equal(wsUrl, 'https://app.example.com/ws-board');
+  assert.equal(wsUrl, '/ws-board');
 });
 
 test('connect-src covers both the http and ws form of every origin', () => {
@@ -50,9 +63,19 @@ test('connect-src covers a websocket on a different host than the api', () => {
   assert.ok(sources.includes('wss://realtime.example.com'));
 });
 
-test('connect-src keeps the default localhost origin, as before', () => {
+test('connect-src needs no extra origin when the endpoints are relative', () => {
+  // Same-origin is already covered by 'self', so the default policy should not
+  // pin itself to any host.
   const { apiBaseUrl, wsUrl } = resolveEndpoints({});
-  assert.equal(connectSources(apiBaseUrl, wsUrl), 'http://localhost:8080 ws://localhost:8080');
+  assert.equal(connectSources(apiBaseUrl, wsUrl), '');
+  const csp = buildCsp(apiBaseUrl, wsUrl);
+  assert.ok(csp.includes("connect-src 'self'"));
+  assert.ok(!csp.includes('localhost:8080'));
+});
+
+test('connect-src covers both the http and ws form of an absolute origin', () => {
+  const sources = connectSources('https://api.example.com/api', 'https://api.example.com/ws-board').split(' ');
+  assert.deepEqual(sources.sort(), ['https://api.example.com', 'wss://api.example.com']);
 });
 
 test('the csp is built from the endpoints, not a hardcoded list', () => {
@@ -64,9 +87,15 @@ test('the csp is built from the endpoints, not a hardcoded list', () => {
 });
 
 test('the meta copy drops frame-ancestors, which a browser ignores there', () => {
-  const csp = buildCsp('http://localhost:8080/api', 'http://localhost:8080/ws-board', { meta: true });
+  const csp = buildCsp('https://api.example.com/api', 'https://api.example.com/ws-board', { meta: true });
   assert.ok(!csp.includes('frame-ancestors'));
-  assert.ok(csp.includes("connect-src 'self' http://localhost:8080 ws://localhost:8080"));
+  assert.ok(csp.includes("connect-src 'self' https://api.example.com wss://api.example.com"));
+});
+
+test('a relative endpoint needs no extra connect-src origin', () => {
+  // Not an error case: '/api' is a valid same-origin deployment, already
+  // covered by 'self'.
+  assert.equal(connectSources('/api', '/ws-board', 'https://app.example.com'), '');
 });
 
 test('script-src stays free of unsafe-inline and unsafe-eval', () => {
@@ -82,10 +111,4 @@ test('an endpoint that cannot be resolved at all is dropped, not fatal', () => {
   const csp = buildCsp('not a url', 'also not a url', { currentOrigin: 'also not a base' });
   assert.ok(csp.includes("connect-src 'self'"));
   assert.ok(csp.includes("script-src 'self'"));
-});
-
-test('a relative endpoint resolves against the serving origin', () => {
-  // Not an error case: '/api' is a valid same-origin deployment.
-  assert.equal(connectSources('/api', '/ws-board', 'https://app.example.com'),
-    'https://app.example.com wss://app.example.com');
 });

@@ -18,6 +18,20 @@ const TOKEN = process.env.QA_TOKEN ?? '';
 const USER_JSON = process.env.QA_USER ?? '{}';
 const BOARD_ID = process.env.QA_BOARD_ID ?? '';
 
+/**
+ * Backend base, for the in-page login.
+ *
+ * Defaults to a same-origin '/api' so the request goes through the Vite dev or
+ * preview proxy. That is not just convenience: a `SameSite=Lax` cookie is
+ * withheld from cross-site XHR, so a cross-origin login would store the session
+ * cookie and then never send it. Override with QA_API to talk to a backend
+ * directly (the QA scripts that are not browser-based still do this).
+ */
+const API_BASE = process.env.QA_API ?? '/api';
+/** QA account credentials, from .uiqa/seed.json. */
+const QA_EMAIL = process.env.QA_EMAIL ?? 'qa.raman@example.com';
+const QA_PASSWORD = process.env.QA_PASSWORD ?? 'Passw0rd!23';
+
 const CHROME_CANDIDATES = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -166,12 +180,90 @@ class Session {
     console.log(`shot -> ${file}`);
   }
 
+  /**
+   * Signs in through the real API, from inside the page.
+   *
+   * The session is an HttpOnly cookie, so it cannot be injected from script -
+   * writing localStorage would do nothing (and that is the point of the change).
+   * Calling /auth/login with credentials:'include' lets the browser store the
+   * cookie exactly as a real user's browser would, which is what makes this a
+   * genuine end-to-end check rather than a shortcut.
+   */
   async setSession() {
-    await this.evaluate(
-      `localStorage.setItem('taskboard.token', ${JSON.stringify(TOKEN)});
-       localStorage.setItem('taskboard.user', ${JSON.stringify(USER_JSON)});
-       'ok'`
+    // A page must be loaded before fetch can run, and it must be one the app
+    // will not immediately redirect away from. `/login` renders for everyone,
+    // signed in or not, so it is the safe place to hold a session.
+    await this.goto('/login', 1200);
+    // Ask Chrome directly why a Set-Cookie was not stored. Without this the
+    // only signal is "the board will not load", which does not distinguish a
+    // rejected cookie from a rejected request.
+    await this.send('Network.enable');
+    const rejected = [];
+    const onExtra = (msg) => {
+      if (msg.method !== 'Network.responseReceivedExtraInfo') return;
+      const cookies = msg.params.headers?.['set-cookie'] ?? msg.params.headers?.['Set-Cookie'];
+      if (Array.isArray(cookies)) {
+        for (const c of cookies) {
+          if (c.startsWith('taskboard.')) {
+            rejected.push({ cookie: c.slice(0, 60), blocked: msg.params.blockedReasons });
+          }
+        }
+      }
+    };
+    this.ws.addEventListener('message', (ev) => {
+      try {
+        onExtra(JSON.parse(ev.data));
+      } catch {
+        /* ignore malformed frame */
+      }
+    });
+
+    const login = await this.evaluate(
+      `fetch(${JSON.stringify(API_BASE + '/auth/login')}, {
+         method: 'POST',
+         credentials: 'include',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(${JSON.stringify({ email: QA_EMAIL, password: QA_PASSWORD })}),
+       }).then(async (r) => ({ status: r.status, body: (await r.text()).slice(0, 120) }))
+        .catch((e) => ({ status: 0, body: String(e) }))`
     );
+    await sleep(400);
+    if (login?.status !== 200) {
+      this.problems.push(`setSession: login failed (${login?.status}) ${login?.body}`);
+    }
+    // Query the app origin: the session cookies are scoped to /api, and
+    // getCookies matches by URL, so the API path has to be included.
+    const { cookies } = await this.send('Network.getCookies', {
+      urls: [`${APP_URL}/`, `${APP_URL}/api/auth/me`],
+    });
+    const summary = cookies
+      .map((c) => `${c.name}(httpOnly=${c.httpOnly},sameSite=${c.sameSite},path=${c.path})`)
+      .join(' ');
+    console.log(`setSession: login ${login?.status}; stored -> ${summary || '(none)'}`);
+    for (const r of rejected) {
+      console.log(`setSession: cookie ${r.cookie}... blockedReasons=${JSON.stringify(r.blocked)}`);
+    }
+    if (!cookies.some((c) => c.name.startsWith('taskboard'))) {
+      this.problems.push('setSession: login returned 200 but no taskboard.* cookie was stored');
+      return login;
+    }
+
+    // The decisive check: a GET that carries nothing but the cookie must
+    // authenticate. If the browser is withholding the cookie (SameSite on a
+    // cross-site request), this answers 401 even though the cookie is stored -
+    // which is precisely the failure this harness exists to catch.
+    const me = await this.evaluate(
+      `fetch(${JSON.stringify(API_BASE + '/auth/me')}, { credentials: 'include' })
+         .then(async (r) => ({ status: r.status, body: (await r.text()).slice(0, 80) }))
+         .catch((e) => ({ status: 0, body: String(e) }))`
+    );
+    console.log(`setSession: cookie-only GET /auth/me -> ${me?.status}`);
+    if (me?.status !== 200) {
+      this.problems.push(
+        `setSession: cookies are stored but NOT sent: /auth/me returned ${me?.status}`
+      );
+    }
+    return login;
   }
 
   /** React-safe input fill (bypasses the controlled-input value tracker). */
@@ -266,7 +358,6 @@ async function runRegister(s) {
 }
 
 async function runDashboard(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto('/boards', 3000);
   await s.shot('04-dashboard');
@@ -281,7 +372,10 @@ async function runDashboard(s) {
 }
 
 async function runBoard(s) {
-  await s.goto('/login', 1200);
+  // Sign in BEFORE the first navigation to a protected route. The session is an
+  // HttpOnly cookie, so it has to be in the browser's store before the app
+  // mounts and asks /auth/me; a page loaded first would render the signed-out
+  // shell and then redirect.
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
   await s.shot('07-board');
@@ -330,7 +424,6 @@ async function runBoard(s) {
 }
 
 async function runListMenu(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
@@ -370,7 +463,6 @@ async function runListMenu(s) {
 }
 
 async function runMeasure(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto('/boards', 3000);
   const info = await s.evaluate(`(() => {
@@ -397,7 +489,6 @@ async function runMeasure(s) {
 }
 
 async function runRealtime(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
@@ -504,7 +595,6 @@ const DRAG_PROBE = `(() => {
 })()`;
 
 async function runDnd(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
@@ -589,7 +679,6 @@ async function runDnd(s) {
 }
 
 async function runDndProbe(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
   console.log('dnd attributes:', await s.evaluate(`JSON.stringify([
@@ -617,7 +706,6 @@ async function runDndProbe(s) {
 }
 
 async function runDndFix(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
@@ -683,7 +771,6 @@ async function runDndFix(s) {
 }
 
 async function runColDrag(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 
@@ -746,7 +833,6 @@ async function runColDrag(s) {
 }
 
 async function runCreateBoard(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto('/boards', 3000);
   const before = await s.evaluate(`document.querySelectorAll('article').length`);
@@ -778,7 +864,6 @@ async function runCreateBoard(s) {
  * library limitation.
  */
 async function runDropAccuracy(s) {
-  await s.goto('/login', 1200);
   await s.setSession();
   await s.goto(`/boards/${BOARD_ID}`, 3500);
 

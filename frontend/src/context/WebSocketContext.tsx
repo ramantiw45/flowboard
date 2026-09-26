@@ -10,6 +10,17 @@ import {
 import { Client, type IStompSocket, type StompSubscription } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { WS_URL } from '../api/client';
+
+/**
+ * The SockJS URL the browser actually opens.
+ *
+ * In dev this is same-origin (`/ws-board`), which the Vite dev server proxies to
+ * the backend. The handshake is what authenticates the socket - it carries the
+ * session cookie - and a cookie is only attached to a same-origin request, so a
+ * cross-origin handshake would connect anonymously and CONNECT would be
+ * rejected. See the proxy config in vite.config.ts.
+ */
+const SOCKET_URL = import.meta.env.DEV ? '/ws-board' : WS_URL;
 import { useAuth } from './AuthContext';
 import type { BoardEvent } from '../types';
 
@@ -36,13 +47,17 @@ export function useWebSocket(): WebSocketContextValue {
 }
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
-  const { token, logout } = useAuth();
+  const { authenticated, logout } = useAuth();
   const [connected, setConnected] = useState(false);
   const clientRef = useRef<Client | null>(null);
   const topicsRef = useRef<Map<string, TopicEntry>>(new Map());
 
   useEffect(() => {
-    if (!token) {
+    // Gate on the session, not on a token: the access token is HttpOnly and
+    // cannot be read here. The socket is authenticated by the cookie that the
+    // browser attaches to the SockJS handshake, which is an ordinary HTTP
+    // request - unlike the STOMP frame, which gets no cookie.
+    if (!authenticated) {
       clientRef.current?.deactivate();
       clientRef.current = null;
       setConnected(false);
@@ -51,9 +66,18 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     const client = new Client({
       // SockJS transport (matches backend /ws-board endpoint with SockJS fallback).
-      webSocketFactory: () => new SockJS(WS_URL) as unknown as IStompSocket,
-      // JWT travels on the STOMP CONNECT frame; JwtChannelInterceptor validates it.
-      connectHeaders: { Authorization: `Bearer ${token}` },
+      webSocketFactory: () => new SockJS(SOCKET_URL) as unknown as IStompSocket,
+      // The socket is authenticated by the auth cookie that the browser attaches
+      // to the SockJS handshake (CookieHandshakeInterceptor). SockJS already sets
+      // `xhr.withCredentials = true` for its XHR transports unless constructed
+      // with `noCredentials`, which we do not pass - so nothing has to be
+      // configured here, only not broken.
+      //
+      // No Authorization header is sent on purpose: the access token is HttpOnly
+      // and there is nothing readable to put on the frame, and doing so would
+      // reintroduce exactly the exposure this design removes. The server still
+      // accepts a bearer token on CONNECT, which is what tools/wsauthcheck.mjs
+      // and other non-browser clients use.
       reconnectDelay: 5000,
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
@@ -79,14 +103,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     client.onWebSocketClose = () => setConnected(false);
     client.onStompError = (frame) => {
       setConnected(false);
-      // The server rejects CONNECT when the JWT is missing, malformed or
-      // expired. Without this the client would reconnect every 5s with the
-      // same dead token forever and the UI would just show 'Reconnecting',
-      // so the user could never sign in again without a manual reload.
+      // The server rejects CONNECT when neither the handshake cookie nor a
+      // bearer token yields a user. Without this the client would reconnect
+      // every 5s forever and the UI would just show 'Reconnecting', so the user
+      // could never sign in again without a manual reload.
       const reason = (frame.headers.message ?? '').toLowerCase();
       if (reason.includes('jwt') || reason.includes('authorization') || reason.includes('authenticated')) {
         client.deactivate();
-        logout();
+        void logout();
       }
     };
 
@@ -101,7 +125,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         entry.subscription = undefined;
       });
     };
-  }, [token, logout]);
+  }, [authenticated, logout]);
 
   const subscribeBoard = useCallback((boardId: string, listener: EventListener) => {
     let entry = topicsRef.current.get(boardId);

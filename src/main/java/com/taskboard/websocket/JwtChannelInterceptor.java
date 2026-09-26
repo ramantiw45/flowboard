@@ -23,10 +23,20 @@ import java.util.UUID;
 /**
  * Secures the STOMP inbound channel.
  *
- * <p><b>CONNECT</b> — the client sends its JWT as the native
- * "Authorization: Bearer &lt;token&gt;" header of the CONNECT frame (works with
- * raw WebSocket and SockJS alike). The resulting Authentication is attached to
- * the WebSocket session, making the user available to Spring Messaging.
+ * <p><b>CONNECT</b> — authenticated by whichever credential is available:
+ * <ol>
+ *   <li>the session established during the HTTP handshake from the auth cookie
+ *       ({@link CookieHandshakeInterceptor}). This is the browser path: the
+ *       access token is {@code HttpOnly}, so the client cannot read it to put in
+ *       the frame, and the browser does not attach a cookie to a STOMP frame.</li>
+ *   <li>{@code Authorization: Bearer &lt;token&gt;} as a native header of the
+ *       CONNECT frame. This is the non-browser path and is kept deliberately, so
+ *       a script, a CLI or {@code tools/wsauthcheck.mjs} can still open a socket,
+ *       and so an unauthenticated handshake is not the only way in.</li>
+ * </ol>
+ * The resulting Authentication is attached to the WebSocket session, making the
+ * user available to Spring Messaging. If neither credential is usable the
+ * CONNECT is rejected, so an anonymous socket never becomes an authenticated one.
  *
  * <p><b>SUBSCRIBE</b> — every board topic is authorized against
  * {@link BoardAccessGuard}. Without this check any authenticated user could
@@ -61,9 +71,19 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
     }
 
     private Message<?> authenticateConnect(StompHeaderAccessor accessor, Message<?> message) {
+        // Path 1: the cookie handshake already authenticated this session.
+        Authentication handshakeAuth =
+                CookieHandshakeInterceptor.from(accessor.getSessionAttributes());
+        if (handshakeAuth != null) {
+            accessor.setUser(handshakeAuth);
+            log.debug("WebSocket CONNECT authenticated from handshake cookie");
+            return message;
+        }
+
+        // Path 2: an explicit bearer token on the frame.
         String authorization = accessor.getFirstNativeHeader("Authorization");
         if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
-            throw new MessagingException("Missing or malformed Authorization header on CONNECT");
+            throw new MessagingException("Unauthenticated CONNECT: no session cookie and no bearer token");
         }
         String token = authorization.substring(BEARER_PREFIX.length());
         if (!jwtService.isTokenValid(token)) {
@@ -73,7 +93,7 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
         Authentication authentication = new UsernamePasswordAuthenticationToken(
                 userDetails, null, userDetails.getAuthorities());
         accessor.setUser(authentication);
-        log.debug("WebSocket CONNECT authenticated for {}", userDetails.getUsername());
+        log.debug("WebSocket CONNECT authenticated from bearer token for {}", userDetails.getUsername());
         return message;
     }
 

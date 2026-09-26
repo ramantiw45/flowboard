@@ -70,6 +70,55 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
+      proxy: devProxy(apiBaseUrl),
+    },
+    // The preview server serves the production build, and the same cookie
+    // reasoning applies, so it gets the same proxy. Without it, `vite preview`
+    // cannot exercise the cookie session at all - the app would talk to the API
+    // cross-origin and every request would arrive without its cookie.
+    preview: {
+      port: 4173,
+      proxy: devProxy(apiBaseUrl),
     },
   };
 });
+
+/**
+ * Same-origin proxy for the API and the WebSocket.
+ *
+ * This is required by the HttpOnly cookie session, not a convenience. A
+ * `SameSite=Lax` cookie is withheld from cross-site XHR, so a browser loading
+ * the app from one port while the API is on another will store the cookie and
+ * then refuse to send it - measured in Chrome: the cookie was in the store
+ * (httpOnly=true, path=/api) and `GET /api/auth/me` still answered 401.
+ * `SameSite=None` is not an escape hatch here, because it requires `Secure`,
+ * which needs real HTTPS.
+ *
+ * Proxying makes the app same-origin with the API, so `Lax` works as intended
+ * and CSRF protection stays meaningful rather than being switched off to
+ * compensate.
+ */
+function devProxy(apiBaseUrl: string) {
+  const target = devApiOrigin(apiBaseUrl);
+  return {
+    '/api': {
+      target,
+      changeOrigin: true,
+    },
+    // SockJS needs an unbuffered upgrade, or the handshake stalls.
+    '/ws-board': {
+      target,
+      changeOrigin: true,
+      ws: true,
+    },
+  };
+}
+
+/** Origin (no path) of the backend, for the proxy. */
+function devApiOrigin(apiBaseUrl: string): string {
+  try {
+    return new URL(apiBaseUrl, 'http://localhost:8080').origin;
+  } catch {
+    return 'http://localhost:8080';
+  }
+}

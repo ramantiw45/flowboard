@@ -1,5 +1,6 @@
 package com.taskboard.config;
 
+import com.taskboard.websocket.CookieHandshakeInterceptor;
 import com.taskboard.websocket.JwtChannelInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,8 +20,11 @@ import java.util.Arrays;
  * Broker:      /topic/**          (server -> client broadcasts, e.g. /topic/board/{boardId})
  * App prefix:  /app/**            (optional client -> server STOMP messages)
  *
- * Authentication: CONNECT frames must carry "Authorization: Bearer <JWT>"
- * — enforced by JwtChannelInterceptor on the client inbound channel.
+ * Authentication: the WebSocket session is authenticated from the auth cookie
+ * during the HTTP handshake (see {@link CookieHandshakeInterceptor}). A CONNECT
+ * frame may alternatively carry "Authorization: Bearer &lt;JWT&gt;" for
+ * non-browser clients; either way {@link JwtChannelInterceptor} enforces it on
+ * the client inbound channel.
  */
 @Configuration
 @EnableWebSocketMessageBroker
@@ -28,6 +32,7 @@ import java.util.Arrays;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtChannelInterceptor jwtChannelInterceptor;
+    private final CookieHandshakeInterceptor cookieHandshakeInterceptor;
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
@@ -44,6 +49,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(","))
                         .map(String::trim)
                         .toArray(String[]::new))
+                // Reads the auth cookie off the handshake request so the STOMP
+                // CONNECT frame does not need a readable token.
+                .addInterceptors(cookieHandshakeInterceptor)
                 .withSockJS();
     }
 

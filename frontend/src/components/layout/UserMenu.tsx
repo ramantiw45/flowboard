@@ -13,7 +13,9 @@ export default function UserMenu() {
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false), open);
 
   const signOut = () => {
-    logout();
+    // Fire-and-forget: the context clears local state first, so the UI updates
+    // immediately and the navigation is not held up by the server round-trip.
+    void logout();
     navigate('/login');
   };
 

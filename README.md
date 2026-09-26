@@ -31,7 +31,7 @@ STOMP-over-SockJS | React 18 | Vite | TypeScript | Tailwind CSS
 
 | Area | Behaviour |
 | --- | --- |
-| **Auth** | Email/password sign-up and sign-in, BCrypt hashes, stateless 24 h JWTs |
+| **Auth** | Email/password sign-up and sign-in, BCrypt hashes, `HttpOnly` cookie session with refresh tokens |
 | **Boards** | Create, search, browse; per-board member roles (`OWNER` / `ADMIN` / `MEMBER`) |
 | **Columns** | Create, rename, reorder (drag or arrow keys), delete (admin/owner only) |
 | **Cards** | Create, edit title/description/priority, delete, drag between and within columns |
@@ -181,9 +181,12 @@ All settings are environment variables; `.env.example` lists them all.
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` | PostgreSQL endpoint |
 | `DB_NAME` / `DB_USER` / `DB_PASS` | `taskboard` / `taskboard` / `taskboard` | Credentials |
 | `JWT_SECRET` | **required** | HMAC-SHA256 signing key, 32 bytes or more |
-| `JWT_EXPIRATION_MS` | `86400000` (24 h) | Token lifetime |
+| `JWT_EXPIRATION_MS` | `3600000` (1 h) | Access-token lifetime |
 | `SERVER_PORT` | `8080` | HTTP port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated API + WebSocket origins |
+| `AUTH_COOKIE_SECURE` | `false` | Set `true` behind TLS |
+| `AUTH_COOKIE_SAME_SITE` | `Lax` | `SameSite` attribute on the session cookies |
+| `AUTH_REFRESH_TTL_DAYS` | `7` | Refresh-token lifetime |
 
 ### Frontend build-time configuration
 
@@ -193,13 +196,26 @@ at build time, which is why they are not environment variables at runtime.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VITE_API_BASE_URL` | `http://localhost:8080/api` | Base URL of the REST API |
+| `VITE_API_BASE_URL` | `/api` (same-origin) | Base URL of the REST API |
 | `VITE_WS_URL` | derived from `VITE_API_BASE_URL` | SockJS/STOMP endpoint |
 
-Both are optional: without a `.env` file the defaults reproduce the previous
-hardcoded values, so local development is unchanged. `VITE_WS_URL` is derived
-rather than repeated, so pointing the app at another backend
-(`VITE_API_BASE_URL=https://api.example.com`) moves the WebSocket with it.
+The default is **relative**, and that is load-bearing rather than cosmetic. A
+`SameSite=Lax` cookie is withheld from cross-site XHR, so if the app called the
+API on a different port the browser would store the session cookie and then
+refuse to send it - sign-in would appear to succeed and every later request
+would be anonymous. Verified in Chrome: the cookie was in the store
+(`httpOnly=true`) and `GET /api/auth/me` still answered `401`. `SameSite=None`
+is not an escape hatch, because it requires `Secure`, i.e. real HTTPS.
+
+So the Vite dev server **and** the preview server proxy `/api` and `/ws-board`
+to the backend, and a production deployment is expected to serve the app and
+the API from one origin (or over HTTPS, setting an absolute `VITE_API_BASE_URL`).
+The WebSocket needs the same treatment, because the session cookie is what
+authenticates its handshake.
+
+`VITE_WS_URL` is derived rather than repeated, so pointing the app at another
+backend (`VITE_API_BASE_URL=https://api.example.com`) moves the WebSocket with
+it.
 
 The `connect-src` of the Content-Security-Policy is generated from these same
 two values by `frontend/src/config/endpoints.ts`, which is imported by both
@@ -215,16 +231,26 @@ variables **and** add that origin to the backend's `CORS_ALLOWED_ORIGINS`.
 
 ## API reference
 
-All routes except sign-up and sign-in require `Authorization: Bearer <jwt>`.
+Requests are authenticated by the `HttpOnly` session cookie, which the browser
+attaches automatically. `Authorization: Bearer <jwt>` is also accepted, for
+non-browser clients and for the STOMP `CONNECT` frame.
+
+Because the credential is now a cookie, **unsafe methods (POST/PUT/PATCH/DELETE)
+require the CSRF token**: the `XSRF-TOKEN` cookie is echoed back in the
+`X-XSRF-TOKEN` header. The browser client does this automatically via axios.
+`/api/auth/*` and `/ws-board/**` are exempt - see the security model.
+
 Errors are RFC 7807 `application/problem+json`.
 
 ### Auth
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/api/auth/signup` | `{ email, displayName, password }` returns token + user |
-| `POST` | `/api/auth/login` | `{ email, password }` returns token + user |
-| `GET` | `/api/auth/me` | Current user; `401` without a valid token |
+| `POST` | `/api/auth/signup` | `{ email, displayName, password }`; sets the session cookies |
+| `POST` | `/api/auth/login` | `{ email, password }`; sets the session cookies |
+| `POST` | `/api/auth/refresh` | Rotates the refresh token, issues a new access token |
+| `POST` | `/api/auth/logout` | Revokes the refresh token server-side; `204` |
+| `GET` | `/api/auth/me` | Current user; `401` without a valid session |
 
 ### Boards
 
@@ -282,15 +308,27 @@ owns instead of `PageImpl` internals:
 **Client:** `@stomp/stompjs` + `sockjs-client`
 **Topic:** `/topic/board/{boardId}`
 
-The JWT travels as a native header on the STOMP `CONNECT` frame:
+The socket is authenticated by the **session cookie on the HTTP handshake**.
+`CookieHandshakeInterceptor` reads the cookie during the handshake - which is an
+ordinary HTTP request, so the browser attaches it - and stashes the resulting
+authentication in the WebSocket session. The `CONNECT` frame then inherits it:
 
 ```js
 new Client({
-  webSocketFactory: () => new SockJS(WS_URL),
-  connectHeaders: { Authorization: `Bearer ${token}` },
+  webSocketFactory: () => new SockJS(SOCKET_URL),
   reconnectDelay: 5000,
 });
 ```
+
+A STOMP frame is *not* an HTTP request, so the browser would never attach a
+cookie to one, and the access token is `HttpOnly` so the client cannot read it to
+put in a header. The handshake is the one place a cookie can be used, which is
+why the socket depends on the app being same-origin with the API.
+
+`Authorization: Bearer <jwt>` on the `CONNECT` frame is still accepted as a
+second path, for non-browser clients (`tools/wsauthcheck.mjs` uses it). If
+neither the handshake cookie nor a bearer token resolves to a user, `CONNECT` is
+rejected - an anonymous socket can connect but can never subscribe.
 
 Every broadcast uses the same envelope:
 
@@ -366,7 +404,12 @@ node tools/wsauthcheck.mjs
 node tools/wsmemberupd.mjs    # does a role change reach a member's live board topic?
 
 # Browser scenarios (needs Chrome started with --remote-debugging-port=9222)
-$env:QA_TOKEN=...; $env:QA_BOARD_ID=...
+# The browser signs in through the real /auth/login, so the session is an
+# HttpOnly cookie exactly as a user's would be - QA_EMAIL/QA_PASSWORD come from
+# .uiqa/seed.json.
+$env:QA_BOARD_ID=...; $env:QA_EMAIL=...; $env:QA_PASSWORD=...
+node tools/uicheck.mjs board       # load a board, open a card, invite modal
+node tools/uicheck.mjs realtime    # a live event reaches the open board
 node tools/uicheck.mjs dnd         # drag a card across columns, measure the preview
 node tools/uicheck.mjs droptest    # assert drops land on the expected index
 node tools/uicheck.mjs dndfix      # measure cursor-to-card offset during a drag
@@ -391,8 +434,27 @@ Screenshots are written to `.uiqa/`, which is git-ignored.
 ## Security model
 
 - **Passwords** are BCrypt hashes and are never returned by any endpoint.
-- **Tokens** are stateless HMAC-SHA256 JWTs. Logout is client-side, so a
-  24-hour token stays valid until it expires.
+- **The session lives in `HttpOnly` cookies**, so no JavaScript can read it. A
+  token in `localStorage` was readable by any XSS and survived the tab; this one
+  is unreachable from script. The browser sends it automatically
+  (`withCredentials`), and the client keeps no copy.
+- **The access token is short-lived** (1 h) and the refresh token is an opaque
+  value stored **hashed** in `refresh_tokens`, so a database dump is not a copy of
+  everyone's sessions. Each refresh rotates the token and revokes the presented
+  one; presenting an already-revoked token is treated as a replay and revokes
+  every session for that user, because it means the token was stolen.
+- **Logout is a real server-side revocation**, not a client-side illusion. The
+  refresh token is marked spent, so a copy of it cannot be exchanged for a new
+  access token.
+- **CSRF protection is enabled**, because a cookie is attached by the browser
+  whether or not the app asks - which is exactly the situation CSRF exists for.
+  It uses the double-submit pattern: the `XSRF-TOKEN` cookie is echoed in the
+  `X-XSRF-TOKEN` header, and `SameSite=Lax` is the first line of defence. The
+  auth cookie stays `HttpOnly`; only the CSRF cookie is script-readable, which is
+  inherent to double submit. This changes the CORS story - writes are no longer
+  "simple" requests, so they trigger a preflight, which the CORS configuration
+  already allows. `/api/auth/*` and `/ws-board/**` are exempt for the reasons
+  documented in `SecurityConfig`.
 - **Authorization** is centralised in `BoardAccessGuard` and applied to every
   board-scoped REST call *and* to STOMP `SUBSCRIBE` frames.
 - **Privilege changes are owner-only.** An `ADMIN` may invite colleagues as
@@ -422,8 +484,12 @@ Screenshots are written to `.uiqa/`, which is git-ignored.
 
 Real and tracked, not hypotheticals:
 
-- **The JWT lives in `localStorage`**, so any XSS could exfiltrate a 24-hour
-  token. Move to `HttpOnly` cookies plus a refresh token before production.
+- **The session cookie is not `Secure` by default.** `app.auth.secure` defaults
+  to `false` so plain-http `localhost` development works, and a cookie sent
+  without `Secure` can be replayed over plain http. Set
+  `AUTH_COOKIE_SECURE=true` for any deployment reachable over a network. The
+  app and API must also be served from the same origin, or from HTTPS - see the
+  same-origin note below.
 - **Sign-up does not reveal which addresses are registered.** A duplicate
   email answers `201` with a `null` user rather than `409`, so the status code
   is not an enumeration oracle. No session is issued in that case, so the

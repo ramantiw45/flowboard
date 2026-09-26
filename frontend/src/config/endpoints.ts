@@ -15,8 +15,22 @@
  * local development is unchanged.
  */
 
-/** Where the backend lives when nothing is configured. */
-export const DEFAULT_API_BASE_URL = 'http://localhost:8080/api';
+/**
+ * Default API base: relative, so the request is same-origin.
+ *
+ * A relative default is what makes the HttpOnly cookie session work in
+ * development. `SameSite=Lax` cookies are withheld from cross-site XHR, so an
+ * absolute default of `http://localhost:8080/api` would store the cookie and
+ * then never send it - verified in Chrome, where the cookie was present in the
+ * store and `GET /api/auth/me` still answered 401. `SameSite=None` is not an
+ * escape hatch because it requires `Secure`, i.e. real HTTPS.
+ *
+ * The Vite dev server and preview server proxy `/api` and `/ws-board` to the
+ * backend, so nothing is lost. A deployment that serves the app and the API
+ * from one origin needs no configuration at all; one that does not should set
+ * VITE_API_BASE_URL to an absolute HTTPS URL and terminate TLS.
+ */
+export const DEFAULT_API_BASE_URL = '/api';
 
 /** SockJS/STOMP endpoint path on the backend. */
 const WS_PATH = '/ws-board';
@@ -50,11 +64,18 @@ function trimTrailingSlashes(value: string): string {
  * what SockJS derives from `https`.
  */
 function deriveWsUrl(apiBaseUrl: string, currentOrigin: string): string {
+  // A relative base stays relative, so the socket handshake is same-origin and
+  // the browser attaches the session cookie to it. Resolving it against
+  // currentOrigin would produce an absolute cross-origin URL here, which is
+  // exactly what breaks cookie auth (see DEFAULT_API_BASE_URL).
+  if (apiBaseUrl.startsWith('/')) {
+    return WS_PATH;
+  }
   try {
     const url = new URL(apiBaseUrl, currentOrigin);
     return `${url.protocol}//${url.host}${WS_PATH}`;
   } catch {
-    return DEFAULT_API_BASE_URL.replace(/\/api$/, '') + WS_PATH;
+    return WS_PATH;
   }
 }
 
@@ -85,6 +106,13 @@ export function connectSources(
 ): string {
   const sources = new Set<string>();
   for (const value of [apiBaseUrl, wsUrl]) {
+    // A relative endpoint is same-origin, which connect-src already covers via
+    // 'self'. Resolving it to an absolute origin here would pin the policy to
+    // whatever host happens to be serving, which is the opposite of what a
+    // same-origin default should do.
+    if (value.startsWith('/')) {
+      continue;
+    }
     try {
       const origin = new URL(value, currentOrigin).origin;
       sources.add(origin);

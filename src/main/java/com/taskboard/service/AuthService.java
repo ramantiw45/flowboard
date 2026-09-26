@@ -7,6 +7,7 @@ import com.taskboard.dto.auth.LoginRequest;
 import com.taskboard.dto.auth.SignupRequest;
 import com.taskboard.dto.auth.UserResponse;
 import com.taskboard.security.JwtService;
+import com.taskboard.security.RefreshTokenService;
 import com.taskboard.security.UserPrincipal;
 import com.taskboard.user.User;
 import com.taskboard.user.UserRepository;
@@ -18,6 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -26,6 +29,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
     public AuthResponse signup(SignupRequest request) {
@@ -87,5 +91,42 @@ public class AuthService {
         User user = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new ForbiddenException("Unknown user"));
         return UserResponse.from(user);
+    }
+
+    /**
+     * Builds the response for a successful sign-in / sign-up.
+     *
+     * <p>The access token is still returned in the body for non-browser
+     * clients, but the browser is expected to ignore it and rely on the
+     * {@code HttpOnly} cookie set alongside. Keeping both is what lets the STOMP
+     * {@code CONNECT} frame carry a token at all: SockJS is a separate transport
+     * that cannot be relied on to carry the cookie.
+     */
+    public AuthResponse issueSession(User user) {
+        String accessToken = jwtService.generateToken(UserPrincipal.from(user));
+        return AuthResponse.bearer(accessToken, UserResponse.from(user));
+    }
+
+    /** Issues a refresh token for {@code user} and returns the raw value. */
+    public String issueRefreshToken(User user) {
+        return refreshTokenService.issue(user);
+    }
+
+    /**
+     * Exchanges a refresh token for a new access token.
+     *
+     * <p>Returns empty for an unknown, expired, revoked or replayed token. The
+     * presented token is consumed (rotated) by {@link RefreshTokenService}, so a
+     * refresh token is single-use.
+     */
+    @Transactional
+    public Optional<AuthResponse> refresh(String rawRefreshToken) {
+        return refreshTokenService.consume(rawRefreshToken).map(this::issueSession);
+    }
+
+    /** Revokes the presented refresh token. Idempotent and never throws. */
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        refreshTokenService.revoke(rawRefreshToken);
     }
 }

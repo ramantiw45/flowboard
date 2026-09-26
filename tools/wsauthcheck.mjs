@@ -25,22 +25,55 @@ const BOARD = seed.boardId;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stamp = Date.now();
 
+const frame = (cmd, headers) =>
+  cmd + '\n' + Object.entries(headers).map(([k, v]) => `${k}:${v}`).join('\n') + '\n\n' + NUL;
+
+/**
+ * Fetches the CSRF cookie the API hands out on any response.
+ *
+ * The backend protects writes with the double-submit pattern: the request must
+ * carry the XSRF-TOKEN cookie *and* echo its value in the X-XSRF-TOKEN header.
+ * Sending only the header is not enough, and the failure is easy to misread - the
+ * card-creation call 403s, no event is published, so the outsider receives
+ * nothing, which looks exactly like a correct rejection. The script would report
+ * a false pass. Hence the explicit error above.
+ */
+let csrfCookie = null;
+
+async function csrfToken() {
+  const res = await fetch(`${BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${seed.token}` } });
+  const raw = res.headers.getSetCookie?.() ?? [];
+  for (const c of raw) {
+    const m = /^XSRF-TOKEN=([^;]*)/.exec(c);
+    if (m) return m[1];
+  }
+  throw new Error('server did not issue an XSRF-TOKEN cookie');
+}
+
+csrfCookie = await csrfToken();
+
 async function api(path, { method = 'GET', token, body } = {}) {
+  const isWrite = method !== 'GET';
   const res = await fetch(`${BASE}/api${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Double submit: the cookie proves the browser holds it, the header
+      // proves this script chose to send it - which a cross-site attacker
+      // cannot do, because it cannot read the cookie.
+      ...(isWrite ? { 'X-XSRF-TOKEN': csrfCookie, Cookie: `XSRF-TOKEN=${csrfCookie}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
+  if (res.status === 403 && text.includes('Forbidden')) {
+    throw new Error(`${method} ${path} -> 403; the write was rejected, so no event was `
+      + 'published and the "no frames received" result below would be a false pass');
+  }
   if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${text.slice(0, 160)}`);
   return text ? JSON.parse(text) : null;
 }
-
-const frame = (cmd, headers) =>
-  cmd + '\n' + Object.entries(headers).map(([k, v]) => `${k}:${v}`).join('\n') + '\n\n' + NUL;
 
 const outsider = await api('/auth/signup', {
   method: 'POST',

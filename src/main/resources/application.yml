@@ -33,8 +33,28 @@ app:
     # mint a valid JWT for any deployment that forgot to override it.
     # Generate one with:  openssl rand -base64 48
     secret: ${JWT_SECRET}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}   # 24h
+    # Short on purpose. The access token now lives in an HttpOnly cookie and is
+    # refreshed silently, so a long-lived access token buys nothing and widens
+    # the window in which a stolen cookie is useful.
+    expiration-ms: ${JWT_EXPIRATION_MS:3600000}   # 1h
     issuer: task-board
+
+  auth:
+    # Session cookies. The access token is a short-lived JWT; the refresh token
+    # is an opaque value stored (hashed) in the database so logout can revoke it.
+    cookie-name: taskboard.at
+    refresh-cookie-name: taskboard.rt
+    # Set true behind TLS. Left false here only so plain-http localhost works;
+    # a Secure-less cookie can be replayed over plain http.
+    secure: ${AUTH_COOKIE_SECURE:false}
+    # Lax keeps the cookie off cross-site POSTs (the usual CSRF vector) while
+    # still allowing a shared link to a board to be opened directly.
+    same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    refresh-ttl-days: ${AUTH_REFRESH_TTL_DAYS:7}
+    # CSRF token pair. The cookie must be readable by JS (that is the point of
+    # the double-submit pattern); the session cookie must NOT be.
+    csrf-header-name: X-XSRF-TOKEN
+    csrf-cookie-name: XSRF-TOKEN
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
