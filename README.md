@@ -351,6 +351,11 @@ node tools/uicheck.mjs createboard # assert the dashboard refreshes after a crea
 node tools/dropcurve.mjs           # response curve across a target column
 node tools/dropoffset.mjs          # fixed-pixel offsets from the droppable's bottom
 node tools/dropgeom.mjs            # per-column geometry: scroll height, dead space
+
+# Load the production build under the CSP in Chrome; exits non-zero on any
+# violation or a blank render.
+npm run build && npm run preview -- --port 4173
+node tools/cspcheck.mjs
 ```
 
 Screenshots are written to `.uiqa/`, which is git-ignored.
@@ -371,6 +376,18 @@ Screenshots are written to `.uiqa/`, which is git-ignored.
 - **Cross-board access** is re-checked at the entity level: a card or list id
   belonging to another board returns `404` rather than mutating it.
 - **Secrets** are environment-only; `JWT_SECRET` has no committed default.
+- **Response headers.** Every API response carries `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy` and `Permissions-Policy`, and
+  `Strict-Transport-Security` when the request arrived over TLS. The filter is
+  registered ahead of authentication, so 401s are covered too.
+- **Content-Security-Policy travels with the document, not from the API.** The
+  backend serves only JSON, so a CSP set there would never be evaluated by a
+  browser. The policy lives in `frontend/vite.config.ts`, is sent as a header by
+  the dev/preview server, and is injected as a `<meta>` tag into the production
+  build. `script-src` omits `unsafe-inline` and `unsafe-eval`, which the app
+  does not need. `tools/cspcheck.mjs` loads the built app under the policy in
+  Chrome and fails on any violation, because a mis-scoped policy breaks fetches
+  and sockets silently rather than loudly.
 
 ---
 
@@ -388,7 +405,13 @@ Real and tracked, not hypotheticals:
 - **No rate limiting** on `/api/auth/login` or `/signup`, so login is still
   brute-forceable. Verification of no enumeration closes the address oracle
   but does nothing about credential guessing.
-- **No security headers** (CSP, HSTS, frame options) are set by the backend.
+- **The Content-Security-Policy is delivered as a `<meta>` tag in the built
+  `index.html`, not as a response header.** A meta policy is weaker: it is
+  ignored for `frame-ancestors` and does not cover the response before the
+  document is parsed. Configure your static host to send the header from
+  `frontend/vite.config.ts` (`CSP`) and this stops mattering. `connect-src`
+  must be kept in step with `API_BASE_URL`/`WS_URL` in
+  `frontend/src/api/client.ts`, or every fetch and socket is blocked.
 - **The frontend API URL is hardcoded** to `http://localhost:8080`
   (`frontend/src/api/client.ts`); there is no build-time environment support.
 - **The activity feed pages on demand** ("Load older activity", 30 rows a page) and

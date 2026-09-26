@@ -32,6 +32,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final CustomUserDetailsService userDetailsService;
+    private final SecurityHeadersFilter securityHeadersFilter;
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
@@ -52,6 +53,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) ->
                                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
                 .authenticationProvider(daoAuthenticationProvider())
+                // Ahead of authentication so even a 401 carries the headers.
+                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
