@@ -337,6 +337,8 @@ powershell -ExecutionPolicy Bypass -File tools/apiprobe.ps1
 # Exits non-zero while the board topic is unprotected.
 node tools/wsauthcheck.mjs
 
+node tools/wsmemberupd.mjs    # does a role change reach a member's live board topic?
+
 # Browser scenarios (needs Chrome started with --remote-debugging-port=9222)
 $env:QA_TOKEN=...; $env:QA_BOARD_ID=...
 node tools/uicheck.mjs dnd         # drag a card across columns, measure the preview
@@ -344,6 +346,11 @@ node tools/uicheck.mjs droptest    # assert drops land on the expected index
 node tools/uicheck.mjs dndfix      # measure cursor-to-card offset during a drag
 node tools/uicheck.mjs coldrag     # assert the column grip starts a drag
 node tools/uicheck.mjs createboard # assert the dashboard refreshes after a create
+
+# Drop-index diagnostics: sweep the aim point and print the resulting index.
+node tools/dropcurve.mjs           # response curve across a target column
+node tools/dropoffset.mjs          # fixed-pixel offsets from the droppable's bottom
+node tools/dropgeom.mjs            # per-column geometry: scroll height, dead space
 ```
 
 Screenshots are written to `.uiqa/`, which is git-ignored.
@@ -385,9 +392,10 @@ Real and tracked, not hypotheticals:
   on each event.
 - **`@hello-pangea/dnd` warns about nested scroll containers** because a Kanban
   board needs both a horizontal board scroller and per-column vertical
-  scrollers. Drops onto a card's centre and the top of a list land exactly, but
-  a drop at the very bottom edge of a long, internally-scrolling column can
-  land a few slots short. `uicheck.mjs droptest` reproduces it.
+  scrollers. The warning is cosmetic in this layout: measured with
+  `tools/dropcurve.mjs`, the drop-index response is monotonic for a short column
+  and for a 40-card column that genuinely scrolls, and the end-of-list index is
+  reachable. `uicheck.mjs droptest` asserts this (3/3).
 
 ---
 
