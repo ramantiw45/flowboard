@@ -15,6 +15,7 @@ npm-debug.log*
 ### Logs ###
 *.log
 logs/
+*.out
 
 ### Secrets & local config ###
 .env
