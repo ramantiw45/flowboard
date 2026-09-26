@@ -71,6 +71,8 @@ export interface ActivityPage {
   hasMore: boolean;
   /** Page index to request next, or null when the feed is fully loaded. */
   nextPage: number | null;
+  /** Total rows on the board, for a "1-30 of 44" style footer. */
+  total: number;
 }
 
 function toActivityItem(a: {
@@ -93,17 +95,30 @@ function toActivityItem(a: {
   };
 }
 
+/** Raw wire shape of the activity page envelope (see ActivityPageResponse). */
+interface ActivityPageResponse {
+  items: Parameters<typeof toActivityItem>[0][];
+  hasMore: boolean;
+  nextPage: number | null;
+  total: number;
+}
+
 export async function getActivityPage(
   boardId: string,
   page = 0,
   size = ACTIVITY_PAGE_SIZE
 ): Promise<ActivityPage> {
-  const { data } = await api.get(`/boards/${boardId}/activity`, { params: { page, size } });
-  const items = (data.content as Parameters<typeof toActivityItem>[0][]).map(toActivityItem);
-  // `last` is true only on the final page; totalPages/lastPages is not emitted
-  // by PageImpl's default JSON serialisation.
-  const last: boolean = Boolean(data.last);
-  return { items, hasMore: !last, nextPage: last ? null : page + 1 };
+  // Field names are the server's explicit ActivityPageResponse contract, not
+  // Spring's PageImpl serialisation.
+  const { data } = await api.get(`/boards/${boardId}/activity`, {
+    params: { page, size },
+  }) as { data: ActivityPageResponse };
+  return {
+    items: data.items.map(toActivityItem),
+    hasMore: data.hasMore,
+    nextPage: data.nextPage,
+    total: data.total,
+  };
 }
 
 export async function getActivity(boardId: string, size = ACTIVITY_PAGE_SIZE): Promise<ActivityItem[]> {

@@ -2,17 +2,23 @@ package com.taskboard.activity;
 
 import com.taskboard.board.BoardRepository;
 import com.taskboard.card.CardRepository;
+import com.taskboard.dto.activity.ActivityLogResponse;
+import com.taskboard.dto.activity.ActivityPageResponse;
+import com.taskboard.security.UserPrincipal;
 import com.taskboard.user.UserRepository;
 import com.taskboard.websocket.BoardEventPublisher;
 import com.taskboard.websocket.event.ActivityEvent;
 import com.taskboard.websocket.event.EventType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+
+import java.util.UUID;
 
 /**
  * Event-driven activity journal. Listens for {@link BoardActivityEvent}
@@ -35,14 +41,19 @@ public class ActivityLogService {
     private final BoardEventPublisher boardEventPublisher;
     private final com.taskboard.service.BoardAccessGuard accessGuard;
 
-    /** Paginated activity feed for a board (member-only). */
+    /**
+     * Paginated activity feed for a board (member-only).
+     *
+     * <p>The membership check lives here, next to the query it guards, so the
+     * authorization rule and the read cannot drift apart as the controller
+     * stays a thin translation of HTTP to service call.
+     */
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<com.taskboard.dto.activity.ActivityLogResponse> getActivityFeed(
-            java.util.UUID boardId, com.taskboard.security.UserPrincipal principal,
-            org.springframework.data.domain.Pageable pageable) {
+    public ActivityPageResponse getActivityFeed(UUID boardId, UserPrincipal principal, Pageable pageable) {
         accessGuard.assertMember(boardId, principal.getId());
-        return activityLogRepository.findByBoardIdOrderByCreatedAtDesc(boardId, pageable)
-                .map(com.taskboard.dto.activity.ActivityLogResponse::from);
+        return ActivityPageResponse.from(
+                activityLogRepository.findByBoardIdOrderByCreatedAtDesc(boardId, pageable)
+                        .map(ActivityLogResponse::from));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

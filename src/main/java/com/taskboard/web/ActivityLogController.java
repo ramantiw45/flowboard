@@ -1,11 +1,9 @@
 package com.taskboard.web;
 
-import com.taskboard.dto.activity.ActivityLogResponse;
+import com.taskboard.activity.ActivityLogService;
+import com.taskboard.dto.activity.ActivityPageResponse;
 import com.taskboard.security.UserPrincipal;
-import com.taskboard.service.BoardAccessGuard;
-import com.taskboard.activity.ActivityLogRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -24,20 +22,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ActivityLogController {
 
-    private final ActivityLogRepository activityLogRepository;
-    private final BoardAccessGuard accessGuard;
+    private final ActivityLogService activityLogService;
 
+    /**
+     * Membership is enforced by {@link ActivityLogService#getActivityFeed},
+     * which owns the query it guards; duplicating the check here would let the
+     * two drift. The controller stays a thin translation of HTTP to service call.
+     */
     @GetMapping
     @Transactional(readOnly = true)
-    public ResponseEntity<Page<ActivityLogResponse>> getActivity(@PathVariable UUID boardId,
-                                                                 @RequestParam(defaultValue = "0") int page,
-                                                                 @RequestParam(defaultValue = "20") int size,
-                                                                 @AuthenticationPrincipal UserPrincipal principal) {
-        accessGuard.assertMember(boardId, principal.getId());
+    public ResponseEntity<ActivityPageResponse> getActivity(@PathVariable UUID boardId,
+                                                            @RequestParam(defaultValue = "0") int page,
+                                                            @RequestParam(defaultValue = "20") int size,
+                                                            @AuthenticationPrincipal UserPrincipal principal) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(100, Math.max(1, size)));
-        Page<ActivityLogResponse> result = activityLogRepository
-                .findByBoardIdOrderByCreatedAtDesc(boardId, pageable)
-                .map(ActivityLogResponse::from);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(
+                activityLogService.getActivityFeed(boardId, principal, pageable));
     }
 }

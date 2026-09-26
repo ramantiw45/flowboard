@@ -212,6 +212,14 @@ Errors are RFC 7807 `application/problem+json`.
 | `PATCH` | `/api/boards/{boardId}/members/{userId}/role` | owner |
 | `GET` | `/api/boards/{boardId}/activity?page=&size=` | member |
 
+The activity endpoint returns an explicit page envelope rather than a
+serialised Spring `Page`, so the client depends on field names this project
+owns instead of `PageImpl` internals:
+
+```json
+{ "items": [ ... ], "hasMore": true, "nextPage": 1, "total": 44 }
+```
+
 ### Lists
 
 | Method | Path | Role |
