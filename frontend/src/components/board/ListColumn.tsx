@@ -154,9 +154,10 @@ export default function ListColumn({
             {...headerDragHandleProps}
             role="button"
             tabIndex={0}
-            aria-label={`Reorder ${list.name}. Use left and right arrow keys to move.`}
+            aria-label={`Reorder ${list.name}. Press left or right arrow to move this list.`}
+            title={`Reorder ${list.name} (arrow keys)`}
             onKeyDown={onGripKeyDown}
-            className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded-control text-slate-500 transition hover:bg-white/10 hover:text-slate-200 focus-visible:text-slate-200 active:cursor-grabbing"
+            className="flex min-h-8 min-w-8 shrink-0 cursor-grab items-center justify-center rounded-control text-slate-400 transition hover:bg-white/10 hover:text-slate-200 focus-visible:text-slate-200 active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
           </div>
@@ -171,7 +172,7 @@ export default function ListColumn({
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Escape' && cancelRename()}
               aria-label="List name"
-              className="min-w-0 flex-1 rounded-control bg-white/10 px-2 py-1 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-500"
+              className="min-w-0 min-h-8 flex-1 rounded-control bg-white/10 px-2 py-1 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-400"
             />
             <Button
               type="submit"
@@ -179,7 +180,7 @@ export default function ListColumn({
               size="sm"
               aria-label="Save"
               title="Save"
-              icon={<Check className="h-4 w-4" />}
+              icon={<Check className="h-4 w-4" aria-hidden="true" />}
             />
             <Button
               variant="glass"
@@ -187,7 +188,7 @@ export default function ListColumn({
               aria-label="Cancel rename"
               title="Cancel rename"
               onClick={cancelRename}
-              icon={<X className="h-4 w-4" />}
+              icon={<X className="h-4 w-4" aria-hidden="true" />}
             />
           </form>
         ) : (
@@ -195,12 +196,12 @@ export default function ListColumn({
             <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${listAccent(list.id)}`} />
             <button
               onClick={() => { setRenameValue(list.name); setRenaming(true); }}
-              className="min-w-0 flex-1 truncate text-left text-sm font-bold text-white transition hover:text-brand-300"
-              title="Rename list"
+              className="min-w-0 flex-1 truncate rounded-control text-left text-sm font-bold text-white transition hover:text-brand-200"
+              title={`Rename list ${list.name}`}
             >
               {list.name}
             </button>
-            <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-micro font-semibold text-slate-400">
+            <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-micro font-semibold text-slate-300" aria-label={`${list.cards.length} cards`}>
               {list.cards.length}
             </span>
             <div ref={menuRef} className="relative shrink-0">
@@ -209,26 +210,26 @@ export default function ListColumn({
                 aria-label={`Actions for ${list.name}`}
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
-                className={`rounded-control p-1.5 transition ${menuOpen ? 'bg-white/15 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                className={`flex min-h-8 min-w-8 items-center justify-center rounded-control p-1.5 transition ${menuOpen ? 'bg-white/15 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
               >
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
               </button>
               {menuOpen && (
                 <div role="menu" className="menu absolute right-0 top-full z-dropdown mt-1.5 w-44">
                   <button
                     role="menuitem"
                     onClick={() => { setMenuOpen(false); setRenameValue(list.name); setRenaming(true); }}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="flex min-h-8 w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
-                    <Pencil className="h-4 w-4 text-slate-400" />
+                    <Pencil className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     Rename
                   </button>
                   <button
                     role="menuitem"
                     onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-danger-600 transition hover:bg-danger-50"
+                    className="flex min-h-8 w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium text-danger-600 transition hover:bg-danger-50"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                     Delete list
                   </button>
                 </div>
@@ -267,7 +268,7 @@ export default function ListColumn({
             }`}
           >
             {list.cards.length === 0 && (
-              <div className="rounded-control border border-dashed border-white/15 px-3 py-6 text-center text-xs text-slate-500">
+              <div className="rounded-control border border-dashed border-white/20 px-3 py-6 text-center text-xs text-slate-300">
                 Drop cards here
               </div>
             )}
@@ -307,10 +308,11 @@ export default function ListColumn({
               onChange={(e) => setNewCardTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitCard(e); } }}
               placeholder="Enter a title for this card..."
-              className="bg-white/10 text-white placeholder:text-slate-500 ring-1 ring-inset ring-brand-400"
+              aria-label={`Card title for list ${list.name}`}
+              className="bg-white/10 text-white placeholder:text-slate-400 ring-1 ring-inset ring-brand-400"
             />
             <div className="mt-2 flex items-center gap-2">
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" aria-label={`Add card to ${list.name}`}>
                 Add card
               </Button>
               <Button
@@ -326,9 +328,10 @@ export default function ListColumn({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="flex w-full items-center gap-1.5 rounded-control px-2 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white"
+            aria-label={`Add a card to ${list.name}`}
+            className="flex min-h-9 w-full items-center gap-1.5 rounded-control px-2 py-2 text-left text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" aria-hidden="true" />
             Add a card
           </button>
         )}

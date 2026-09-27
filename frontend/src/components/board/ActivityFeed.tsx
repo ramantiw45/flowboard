@@ -57,9 +57,9 @@ export default function ActivityFeed({
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Activity</h2>
+          <h2 id="activity-feed-heading" className="text-sm font-bold uppercase tracking-wider text-slate-200">Activity</h2>
           {activity.length > 0 && (
-            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-micro font-bold text-slate-300 ring-1 ring-inset ring-white/10">
+            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-micro font-bold text-slate-200 ring-1 ring-inset ring-white/10">
               {activity.length}
             </span>
           )}
@@ -67,9 +67,9 @@ export default function ActivityFeed({
         <button
           onClick={onClose}
           aria-label="Close activity feed"
-          className="-mr-1 rounded-control p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+          className="flex min-h-8 min-w-8 items-center justify-center rounded-control p-1.5 text-slate-300 transition hover:bg-white/10 hover:text-white"
         >
-          <X className="h-4 w-4" strokeWidth={2.25} />
+          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
         </button>
       </div>
 
@@ -84,7 +84,7 @@ export default function ActivityFeed({
             />
           </div>
         ) : (
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-white/5" aria-label="Activity events">
             {activity.map((item) => {
               const TypeIcon = TYPE_ICONS[item.type] ?? Activity;
               return (
@@ -93,13 +93,13 @@ export default function ActivityFeed({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-white">
-                        <TypeIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
+                        <TypeIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
                         <span className="truncate">{item.actorName}</span>
                       </p>
                       <time
                         dateTime={item.at}
                         title={fullDate(item.at)}
-                        className="shrink-0 text-micro text-slate-500"
+                        className="shrink-0 text-micro text-slate-400"
                       >
                         {timeAgo(item.at)}
                       </time>
@@ -117,7 +117,8 @@ export default function ActivityFeed({
             <button
               onClick={onLoadMore}
               disabled={loadingMore}
-              className="w-full rounded-control py-1.5 text-xs font-medium text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+              aria-label={loadingMore ? 'Loading older activity' : 'Load older activity'}
+              className="min-h-8 w-full rounded-control py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
             >
               {loadingMore ? 'Loading…' : 'Load older activity'}
             </button>

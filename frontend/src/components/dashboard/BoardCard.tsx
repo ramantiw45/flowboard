@@ -57,31 +57,31 @@ export default function BoardCard({ board }: BoardCardProps) {
           aria-label={`Actions for ${board.name}`}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          className="rounded-control bg-white/20 p-1.5 text-white opacity-0 backdrop-blur-sm transition hover:bg-white/35 focus-visible:opacity-100 group-hover:opacity-100"
+          className="flex min-h-8 min-w-8 items-center justify-center rounded-control bg-white/25 p-1.5 text-white opacity-0 backdrop-blur-sm transition hover:bg-white/35 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </button>
 
         {menuOpen && (
-          <div role="menu" className="menu absolute right-0 top-full z-dropdown mt-1.5 w-44">
+          <div role="menu" aria-label={`Actions for ${board.name}`} className="menu absolute right-0 top-full z-dropdown mt-1.5 w-44">
             <button
               role="menuitem"
               onClick={() => void copyLink()}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="flex min-h-8 w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               {copied ? (
-                <Check className="h-4 w-4 text-success-500" />
+                <Check className="h-4 w-4 text-success-500" aria-hidden="true" />
               ) : (
-                <Share2 className="h-4 w-4 text-slate-400" />
+                <Share2 className="h-4 w-4 text-slate-500" aria-hidden="true" />
               )}
               {copied ? 'Link copied' : 'Copy board link'}
             </button>
             <Link
               role="menuitem"
               to={`/boards/${board.id}`}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="flex min-h-8 w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              <CalendarDays className="h-4 w-4 text-slate-400" />
+              <CalendarDays className="h-4 w-4 text-slate-500" aria-hidden="true" />
               Open board
             </Link>
           </div>
@@ -100,15 +100,15 @@ export default function BoardCard({ board }: BoardCardProps) {
             <span title={`Owned by ${board.ownerName}`} className="truncate font-medium text-slate-600">
               {board.ownerName}
             </span>
-            <span className="text-slate-300">/</span>
+            <span className="text-slate-400" aria-hidden="true">/</span>
             <span className="shrink-0">Owner</span>
           </div>
         </div>
 
         <div className="mt-4 flex items-end justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="flex items-center gap-1 text-micro font-medium text-slate-400">
-              <CalendarDays className="h-3.5 w-3.5" />
+            <span className="flex items-center gap-1 text-micro font-medium text-slate-500">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
               {shortDate(board.createdAt)}
             </span>
             <Avatar name={board.ownerName} title={`Owner - ${board.ownerName}`} size="xs" ring={false} />
@@ -116,7 +116,8 @@ export default function BoardCard({ board }: BoardCardProps) {
 
           <Link
             to={`/boards/${board.id}`}
-            className="shrink-0 rounded-control bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-brand-600 hover:text-white"
+            aria-label={`Open ${board.name}`}
+            className="flex min-h-8 shrink-0 items-center rounded-control bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-brand-600 hover:text-white"
           >
             Open board
           </Link>

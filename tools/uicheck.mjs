@@ -300,6 +300,35 @@ class Session {
     await this.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); 'ok'`);
   }
 
+  /**
+   * A real key press through the input pipeline.
+   *
+   * The synthetic window events used elsewhere are not enough for the keyboard
+   * work: focus only moves in response to a trusted key event, and the dialog's
+   * own focus trap is a capture-phase listener that the sensor stack also sees.
+   * Both need the browser to believe a person pressed the key.
+   */
+  async key(name, { shift = false } = {}) {
+    const KEYS = {
+      Tab: { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 },
+      Enter: { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' },
+      Escape: { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 },
+      ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 },
+      ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 },
+      Space: { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, text: ' ' },
+    };
+    const k = KEYS[name];
+    if (!k) throw new Error(`unmapped key: ${name}`);
+    const base = { ...k, modifiers: shift ? 8 : 0 };
+    // A printable key needs keyDown (not rawKeyDown) so the browser also emits
+    // the character; navigation keys must not carry text or they insert it.
+    const type = k.text ? 'keyDown' : 'rawKeyDown';
+    await this.send('Input.dispatchKeyEvent', { type, ...base });
+    if (k.text) await this.send('Input.dispatchKeyEvent', { type: 'char', ...base });
+    await this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+    await sleep(120);
+  }
+
   /** Raw mouse input so @hello-pangea/dnd sees a genuine pointer drag. */
   async mouse(type, x, y, extra = {}) {
     await this.send('Input.dispatchMouseEvent', {
@@ -425,6 +454,187 @@ async function runBoard(s) {
   await s.shot('12-confirm-dialog');
   await s.escape();
   await sleep(700);
+}
+
+/**
+ * Keyboard and dialog-focus check.
+ *
+ * Everything here is driven with real key events rather than synthetic window
+ * ones, because the behaviour under test *is* the browser's own: trusted keys
+ * move focus, the dnd keyboard sensor listens for Space, and the dialog's
+ * capture-phase Escape/Tab handler has to win over both.
+ *
+ * Checks, in order:
+ *   1. a card is a single tab stop and Enter opens it;
+ *   2. the dialog takes focus and keeps it (Tab never escapes to the page);
+ *   3. Escape closes the innermost dialog only - the delete confirmation goes
+ *      first and the card details behind it stays open;
+ *   4. focus returns to the card the dialog was opened from;
+ *   5. Space on a card still belongs to the dnd sensor (no dialog, no scroll);
+ *   6. the board switcher is operable end to end from the keyboard.
+ */
+async function runKeyboard(s) {
+  await s.setSession();
+  await sleep(400);
+  await s.goto(`/boards/${BOARD_ID}`, 3500);
+
+  const fail = (m) => s.problems.push(`keyboard: ${m}`);
+
+  /** Where focus is, in a form that is readable in the log. */
+  const focusInfo = () =>
+    s.evaluate(`(() => {
+      const el = document.activeElement;
+      if (!el) return 'none';
+      return JSON.stringify({
+        tag: el.tagName.toLowerCase(),
+        role: el.getAttribute('role') || '',
+        name: (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || '').trim().slice(0, 34),
+        inDialog: !!el.closest('[role="dialog"]'),
+        dialogs: document.querySelectorAll('[role="dialog"]').length,
+      });
+    })()`);
+
+  /**
+   * Focus the first *card*.
+   *
+   * A card is both a draggable and a drag handle; the list header grip is only
+   * a handle, so requiring both attributes is what separates the two. Matching
+   * on the handle alone silently picked the grip, whose Enter does nothing.
+   */
+  const focusFirstCard = () =>
+    s.evaluate(`(() => {
+      const card = document.querySelector('[data-rfd-draggable-id][data-rfd-drag-handle-draggable-id]');
+      if (!card) return 'no-card';
+      card.focus();
+      return JSON.stringify({
+        tabIndex: card.getAttribute('tabindex'),
+        role: card.getAttribute('role') || '',
+        name: (card.getAttribute('aria-label') || '').slice(0, 48),
+      });
+    })()`);
+
+  // --- 1. a card is one tab stop, and Enter opens it -------------------
+  const raw = await focusFirstCard();
+  if (raw === 'no-card') {
+    fail('no draggable card on the board');
+    s.report();
+    return;
+  }
+  const card = JSON.parse(raw);
+  console.log(`card: role=${card.role} tabIndex=${card.tabIndex} name="${card.name}"`);
+  await s.key('Enter');
+  await sleep(1200);
+  let f = JSON.parse(await focusInfo());
+  console.log(`after Enter: ${JSON.stringify(f)}`);
+  if (f.dialogs !== 1) fail(`Enter on a card did not open the details dialog (dialogs=${f.dialogs})`);
+  if (!f.inDialog) fail(`dialog opened but focus stayed outside it (on ${f.tag})`);
+  await s.shot('26-keyboard-card-open');
+
+  // --- 2. focus is trapped in the dialog -------------------------------
+  let escaped = 0;
+  const trail = [];
+  for (let i = 0; i < 14; i++) {
+    await s.key('Tab', { shift: i % 7 === 6 });
+    const t = JSON.parse(await focusInfo());
+    trail.push(`${t.tag}${t.role ? `[${t.role}]` : ''}:${t.name}`);
+    if (!t.inDialog) escaped++;
+  }
+  console.log(`tab trail: ${trail.join(' -> ')}`);
+  if (escaped > 0) fail(`Tab left the dialog ${escaped}/14 times`);
+  await s.shot('27-keyboard-trap');
+
+  // --- 3. Escape unwinds one dialog at a time --------------------------
+  const openedConfirm = await s.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('[role="dialog"] button')]
+      .find((b) => /delete/i.test(b.textContent || ''));
+    if (!btn) return 'no-delete-button';
+    btn.click();
+    return 'clicked';
+  })()`);
+  await sleep(1000);
+  let stacked = JSON.parse(await focusInfo());
+  console.log(`delete confirm (${openedConfirm}): dialogs=${stacked.dialogs}`);
+  if (stacked.dialogs !== 2) fail(`expected 2 stacked dialogs, found ${stacked.dialogs}`);
+
+  await s.key('Escape');
+  await sleep(800);
+  stacked = JSON.parse(await focusInfo());
+  console.log(`after 1st Escape: dialogs=${stacked.dialogs} inDialog=${stacked.inDialog}`);
+  if (stacked.dialogs !== 1) fail(`Escape closed down to ${stacked.dialogs} dialogs, expected the innermost only`);
+  if (!stacked.inDialog) fail('after dismissing the confirmation focus left the card details dialog');
+  await s.shot('28-keyboard-one-escape');
+
+  await s.key('Escape');
+  await sleep(800);
+  f = JSON.parse(await focusInfo());
+  console.log(`after 2nd Escape: dialogs=${f.dialogs} focus=${f.tag}:${f.name}`);
+  if (f.dialogs !== 0) fail(`the card details dialog survived Escape (dialogs=${f.dialogs})`);
+  if (f.name !== card.name.slice(0, 34)) fail(`focus was not returned to the card (on ${f.tag} "${f.name}")`);
+
+  // --- 4. Space belongs to the drag sensor, not to "open" --------------
+  await focusFirstCard();
+  const scrollBefore = await s.evaluate(`window.scrollY`);
+  await s.key('Space');
+  await sleep(500);
+  f = JSON.parse(await focusInfo());
+  const scrollAfter = await s.evaluate(`window.scrollY`);
+  console.log(`after Space: dialogs=${f.dialogs} scrollY ${scrollBefore} -> ${scrollAfter}`);
+  if (f.dialogs !== 0) fail('Space on a card opened the dialog, fighting the dnd keyboard sensor');
+  if (scrollAfter !== scrollBefore) fail(`Space scrolled the board (${scrollBefore} -> ${scrollAfter})`);
+  await s.key('Escape');
+  await sleep(400);
+
+  // --- 5. board switcher, keyboard only -------------------------------
+  const trigger = await s.evaluate(`(() => {
+    const b = [...document.querySelectorAll('button')]
+      .find((n) => /^Switch board/.test(n.getAttribute('aria-label') || ''));
+    if (!b) return 'no-trigger';
+    b.focus();
+    return (b.getAttribute('aria-label') || '').slice(0, 44);
+  })()`);
+  console.log(`switcher trigger: ${trigger}`);
+  if (trigger === 'no-trigger') {
+    fail('board switcher trigger is missing or unlabelled');
+  } else {
+    await s.key('Enter');
+    await sleep(700);
+    const optionState = () =>
+      s.evaluate(`(() => {
+        const list = document.querySelector('[role="listbox"]');
+        const opts = list ? [...list.querySelectorAll('[role="option"]')] : [];
+        const i = opts.findIndex((o) => o === document.activeElement);
+        return JSON.stringify({ open: !!list, options: opts.length, index: i, selected: i >= 0 ? opts[i].getAttribute('aria-selected') : null });
+      })()`);
+    let sw = JSON.parse(await optionState());
+    console.log(`switcher open: ${JSON.stringify(sw)}`);
+    if (!sw.open || sw.options === 0) fail('Enter on the switcher did not open a populated listbox');
+
+    await s.key('ArrowDown');
+    sw = JSON.parse(await optionState());
+    console.log(`ArrowDown from search: ${JSON.stringify(sw)}`);
+    if (sw.index !== 0) fail(`ArrowDown from the search field did not reach the first option (index=${sw.index})`);
+
+    await s.key('ArrowDown');
+    sw = JSON.parse(await optionState());
+    console.log(`ArrowDown again: ${JSON.stringify(sw)}`);
+    if (sw.index !== 1) fail(`ArrowDown did not move to the next option (index=${sw.index})`);
+
+    await s.key('Escape');
+    await sleep(600);
+    const restored = JSON.parse(await s.evaluate(`(() => {
+      const el = document.activeElement;
+      return JSON.stringify({
+        name: (el && el.getAttribute ? el.getAttribute('aria-label') : '') || '',
+        tag: el ? el.tagName.toLowerCase() : 'none',
+      });
+    })()`));
+    console.log(`Escape from switcher: ${JSON.stringify(restored)}`);
+    if (!restored.name.startsWith('Switch board')) fail(`Escape did not return focus to the trigger (${restored.name})`);
+    await s.shot('29-keyboard-switcher');
+  }
+
+  await s.goto(`/boards/${BOARD_ID}`, 2500);
+  await s.shot('30-board-after-keyboard');
 }
 
 async function runListMenu(s) {
@@ -1094,6 +1304,7 @@ else if (scenario === 'register') await runRegister(session);
 else if (scenario === 'dashboard') await runDashboard(session);
 else if (scenario === 'scale') await runScale(session);
 else if (scenario === 'board') await runBoard(session);
+else if (scenario === 'keyboard') await runKeyboard(session);
 else if (scenario === 'listmenu') await runListMenu(session);
 else if (scenario === 'measure') await runMeasure(session);
 else if (scenario === 'realtime') await runRealtime(session);

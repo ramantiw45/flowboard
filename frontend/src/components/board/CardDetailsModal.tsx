@@ -74,12 +74,12 @@ export default function CardDetailsModal({
         <form onSubmit={handleSave} className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-surface bg-slate-50 px-3.5 py-2.5 ring-1 ring-inset ring-slate-200/60">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Current</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current</span>
               <PriorityBadge priority={card.priority} />
             </div>
-            <div className="flex items-center gap-3 text-micro text-slate-400">
+            <div className="flex items-center gap-3 text-micro text-slate-500">
               <span className="flex items-center gap-1">
-                <History className="h-3.5 w-3.5" />
+                <History className="h-3.5 w-3.5" aria-hidden="true" />
                 {cardActivity.length} event{cardActivity.length === 1 ? '' : 's'}
               </span>
               <span className="font-mono" title={card.id}>
@@ -116,7 +116,7 @@ export default function CardDetailsModal({
 
           <div>
             <p className="label flex items-center gap-1.5">
-              <Tag className="h-3.5 w-3.5 text-slate-400" />
+              <Tag className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
               Priority
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -128,8 +128,9 @@ export default function CardDetailsModal({
                     key={p}
                     type="button"
                     aria-pressed={active}
+                    aria-label={`Set priority ${meta.label}`}
                     onClick={() => setPriority(p)}
-                    className={`inline-flex items-center gap-1.5 rounded-control px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition ${
+                    className={`inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition ${
                       active
                         ? `${meta.badge} ring-2`
                         : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50 hover:text-slate-700'
@@ -137,7 +138,7 @@ export default function CardDetailsModal({
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
                     {meta.label}
-                    {active && <Check className="h-3.5 w-3.5" />}
+                    {active && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
                   </button>
                 );
               })}
@@ -147,15 +148,15 @@ export default function CardDetailsModal({
           {cardActivity.length > 0 && (
             <div>
               <p className="label flex items-center gap-1.5">
-                <History className="h-3.5 w-3.5 text-slate-400" />
+                <History className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
                 Card history
               </p>
               <ul className="thin-scrollbar max-h-40 space-y-1.5 overflow-y-auto rounded-surface bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200/60">
                 {cardActivity.map((a) => (
                   <li key={a.id} className="flex items-start gap-2 text-xs text-slate-600">
-                    <AlignLeft className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
+                    <AlignLeft className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
                     <span className="flex-1">{a.message}</span>
-                    <span className="shrink-0 text-slate-400" title={fullDate(a.at)}>
+                    <span className="shrink-0 text-slate-500" title={fullDate(a.at)}>
                       {timeAgo(a.at)}
                     </span>
                   </li>
@@ -168,7 +169,7 @@ export default function CardDetailsModal({
             <Button
               type="button"
               variant="danger-ghost"
-              icon={<Trash2 className="h-4 w-4" />}
+              icon={<Trash2 className="h-4 w-4" aria-hidden="true" />}
               onClick={() => setConfirmDelete(true)}
             >
               Delete card

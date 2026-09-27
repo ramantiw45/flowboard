@@ -5,14 +5,14 @@ interface ConnectionStatusProps {
   withLabel?: boolean;
 }
 
-/**
- * Live-sync indicator: a pulsing dot communicates streaming state better
- * than text alone, and the label explains it on hover.
+/** Live-sync indicator: dot + text label (never colour-alone), with a
+ * tooltip that spells out the state for sighted users.
  */
 export default function ConnectionStatus({ connected, tone = 'light', withLabel = true }: ConnectionStatusProps) {
   const label = connected ? 'Live sync' : 'Reconnecting';
   return (
     <span
+      role="status"
       title={connected ? 'Connected — changes sync in real time' : 'Connection lost — retrying…'}
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-micro font-semibold ${
         connected
@@ -24,7 +24,7 @@ export default function ConnectionStatus({ connected, tone = 'light', withLabel 
             : 'bg-warning-50 text-warning-700 ring-1 ring-inset ring-warning-100'
       }`}
     >
-      <span className="relative flex h-2 w-2">
+      <span className="relative flex h-2 w-2" aria-hidden="true">
         {connected && (
           <span
             className={`absolute inline-flex h-full w-full animate-ping-soft rounded-full ${

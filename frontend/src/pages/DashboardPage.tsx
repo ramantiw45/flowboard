@@ -68,11 +68,11 @@ export default function DashboardPage() {
         <div className="absolute inset-0 dot-grid-hero" />
         <div className="relative mx-auto flex max-w-6xl flex-col gap-5 px-5 pb-16 pt-10 sm:px-8">
           <div>
-            <p className="text-sm font-medium text-white/70">Workspace</p>
+            <p className="text-sm font-medium text-white/80">Workspace</p>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white">
               Welcome back, {firstName}
             </h1>
-            <p className="mt-1.5 text-sm text-white/75">
+            <p className="mt-1.5 text-sm text-white/85">
               {loading
                 ? 'Loading your boards…'
                 : loadError
@@ -87,17 +87,18 @@ export default function DashboardPage() {
             <Button
               variant="inverse"
               onClick={() => setCreateOpen(true)}
-              icon={<Plus className="h-4 w-4" />}
+              icon={<Plus className="h-4 w-4" aria-hidden="true" />}
             >
               New board
             </Button>
             <div className="relative min-w-search flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70" aria-hidden="true" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search boards…"
-                className="w-full rounded-control border-0 bg-white/15 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/60 ring-1 ring-inset ring-white/25 backdrop-blur transition focus:bg-white/20 focus:ring-2 focus:ring-inset focus:ring-white/60"
+                aria-label="Search boards"
+                className="min-h-9 w-full rounded-control border-0 bg-white/15 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/70 ring-1 ring-inset ring-white/25 backdrop-blur transition focus:bg-white/20 focus:ring-2 focus:ring-inset focus:ring-white/60"
               />
             </div>
           </div>
@@ -118,7 +119,7 @@ export default function DashboardPage() {
           >
             <p className="text-base font-bold text-slate-900">Could not load your boards</p>
             <p className="max-w-sm text-sm text-slate-500">{loadError}</p>
-            <Button variant="secondary" onClick={() => void loadBoards(true)} icon={<RefreshCw className="h-4 w-4" />}>
+            <Button variant="secondary" onClick={() => void loadBoards(true)} icon={<RefreshCw className="h-4 w-4" aria-hidden="true" />}>
               Try again
             </Button>
           </div>
@@ -128,7 +129,7 @@ export default function DashboardPage() {
             title="No boards yet"
             description="Boards are where the work happens. Create one and we will set up To Do, In Progress and Done lists for you."
             action={
-              <Button onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" />}>
+              <Button onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>
                 Create your first board
               </Button>
             }

@@ -122,7 +122,7 @@ export default function InviteMemberModal({
               )}
             </Field>
 
-            <Button type="submit" loading={busy} icon={<UserPlus className="h-4 w-4" />} className="w-full">
+            <Button type="submit" loading={busy} icon={<UserPlus className="h-4 w-4" aria-hidden="true" />} className="w-full">
               {busy ? 'Inviting…' : 'Send invite'}
             </Button>
           </form>

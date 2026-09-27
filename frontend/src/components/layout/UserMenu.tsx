@@ -25,7 +25,8 @@ export default function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-full p-0.5 pr-1 transition hover:bg-slate-100"
+        aria-label={user?.displayName ? `Account menu for ${user.displayName}` : 'Account menu'}
+        className="flex min-h-8 items-center gap-2 rounded-full p-0.5 pr-1 transition hover:bg-slate-100"
       >
         <Avatar name={user?.displayName ?? '?'} size="sm" ring={false} />
         <span className="hidden text-sm font-medium text-slate-700 sm:block">{user?.displayName}</span>
@@ -46,9 +47,9 @@ export default function UserMenu() {
           <button
             role="menuitem"
             onClick={signOut}
-            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-danger-600 transition hover:bg-danger-50"
+            className="flex min-h-9 w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-danger-600 transition hover:bg-danger-50"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-4 w-4" aria-hidden="true" />
             Sign out
           </button>
         </div>

@@ -43,11 +43,11 @@ export function CardFace({ card, dragging = false }: { card: CardData; dragging?
         <PriorityBadge priority={card.priority} />
         {hasDescription ? (
           <span className="flex items-center gap-1" title="Has description">
-            <AlignLeft className="h-3.5 w-3.5 text-slate-400" />
+            <AlignLeft className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
           </span>
         ) : (
           <span
-            className="font-mono text-micro text-slate-300 transition group-hover:text-slate-400"
+            className="font-mono text-micro text-slate-400 transition group-hover:text-slate-500"
             title={card.id}
           >
             #{card.id.slice(0, 8)}
@@ -59,6 +59,21 @@ export function CardFace({ card, dragging = false }: { card: CardData; dragging?
 }
 
 export default function CardItem({ card, index, onOpen, measureRef }: CardItemProps) {
+  /**
+   * Keyboard equivalent of clicking a card.
+   *
+   * Only Enter is claimed here: the library's keyboard sensor owns Space (it
+   * lifts the card so arrows can move it), and swallowing Space would open the
+   * dialog and start a drag from the same keypress. The sensor listens on the
+   * window rather than through this handler, so Enter simply opens details and
+   * every other key reaches the drag machinery untouched.
+   */
+  const onCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    onOpen(card);
+  };
+
   return (
     <Draggable draggableId={card.id} index={index}>
       {(provided, snapshot) => (
@@ -72,6 +87,11 @@ export default function CardItem({ card, index, onOpen, measureRef }: CardItemPr
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={() => onOpen(card)}
+          onKeyDown={onCardKeyDown}
+          role="button"
+          tabIndex={0}
+          aria-label={`${card.title}, ${PRIORITY_META[card.priority].label} priority. Press enter to open`}
+          className="rounded-surface"
         >
           <CardFace card={card} dragging={snapshot.isDragging} />
         </div>

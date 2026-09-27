@@ -28,9 +28,10 @@ export default function AddListForm({ onCreate }: AddListFormProps) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex w-column shrink-0 items-center gap-2 rounded-surface bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 ring-1 ring-inset ring-white/10 backdrop-blur transition hover:bg-white/10 hover:text-white"
+        aria-label="Add another list"
+        className="flex min-h-9 w-column shrink-0 items-center gap-2 rounded-surface bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 ring-1 ring-inset ring-white/10 backdrop-blur transition hover:bg-white/10 hover:text-white"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4" aria-hidden="true" />
         Add another list
       </button>
     );
@@ -47,8 +48,8 @@ export default function AddListForm({ onCreate }: AddListFormProps) {
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
         placeholder="Enter list name..."
-        aria-label="List name"
-        className="w-full rounded-control bg-white/10 px-2.5 py-2 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-500"
+        aria-label="New list name"
+        className="min-h-8 w-full rounded-control bg-white/10 px-2.5 py-2 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-400"
       />
       <div className="mt-2 flex items-center gap-2">
         <Button type="submit" size="sm" loading={busy}>
@@ -60,7 +61,7 @@ export default function AddListForm({ onCreate }: AddListFormProps) {
           aria-label="Cancel add list"
           title="Cancel add list"
           onClick={() => setOpen(false)}
-          icon={<X className="h-4 w-4" />}
+          icon={<X className="h-4 w-4" aria-hidden="true" />}
         />
       </div>
     </form>
