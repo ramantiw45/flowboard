@@ -14,12 +14,12 @@ export default function EmptyState({ icon: Icon, title, description, action, ton
   const dark = tone === 'dark';
   return (
     <div
-      className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-14 text-center animate-fade-up ${
+      className={`flex flex-col items-center justify-center rounded-surface border-2 border-dashed px-6 py-14 text-center animate-fade-up ${
         dark ? 'border-white/15 bg-white/5' : 'border-slate-200 bg-white'
       }`}
     >
       <div
-        className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${
+        className={`mb-4 flex h-12 w-12 items-center justify-center rounded-surface ${
           dark ? 'bg-white/10 text-brand-300' : 'bg-brand-50 text-brand-600'
         }`}
       >

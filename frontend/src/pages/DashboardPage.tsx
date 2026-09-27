@@ -65,11 +65,11 @@ export default function DashboardPage() {
     <div className="thin-scrollbar flex-1 overflow-y-auto bg-slate-100">
       {/* Gradient page header keeps the dashboard from feeling flat */}
       <div className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-br from-brand-600 via-brand-500 to-violet-500">
-        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(rgba(255,255,255,0.7)_1px,transparent_1px)] [background-size:18px_18px]" />
+        <div className="absolute inset-0 dot-grid-hero" />
         <div className="relative mx-auto flex max-w-6xl flex-col gap-5 px-5 pb-16 pt-10 sm:px-8">
           <div>
             <p className="text-sm font-medium text-white/70">Workspace</p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-[1.75rem]">
+            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white">
               Welcome back, {firstName}
             </h1>
             <p className="mt-1.5 text-sm text-white/75">
@@ -85,19 +85,19 @@ export default function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Button
+              variant="inverse"
               onClick={() => setCreateOpen(true)}
               icon={<Plus className="h-4 w-4" />}
-              className="bg-white text-brand-700 shadow-card-hover hover:bg-white hover:text-brand-800"
             >
               New board
             </Button>
-            <div className="relative min-w-[13rem] flex-1 sm:max-w-xs">
+            <div className="relative min-w-search flex-1 sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search boards…"
-                className="w-full rounded-lg border-0 bg-white/15 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/60 ring-1 ring-inset ring-white/25 backdrop-blur transition focus:bg-white/20 focus:ring-2 focus:ring-inset focus:ring-white/60"
+                className="w-full rounded-control border-0 bg-white/15 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/60 ring-1 ring-inset ring-white/25 backdrop-blur transition focus:bg-white/20 focus:ring-2 focus:ring-inset focus:ring-white/60"
               />
             </div>
           </div>
@@ -106,7 +106,7 @@ export default function DashboardPage() {
 
       <div className="mx-auto max-w-6xl px-5 pb-14 sm:px-8">
         {loading ? (
-          <div className="relative z-10 -mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="relative z-base -mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <BoardCardSkeleton key={i} />
             ))}
@@ -145,7 +145,7 @@ export default function DashboardPage() {
             }
           />
         ) : (
-          <div className="relative z-10 -mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="relative z-base -mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((board) => (
               <BoardCard key={board.id} board={board} />
             ))}

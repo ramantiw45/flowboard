@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import Loader from './Loader';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'glass';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'glass' | 'inverse';
 type Size = 'sm' | 'md';
 
 const VARIANTS: Record<Variant, string> = {
@@ -11,6 +11,8 @@ const VARIANTS: Record<Variant, string> = {
   danger: 'btn-danger',
   'danger-ghost': 'btn-danger-ghost',
   glass: 'btn-glass',
+  /** Primary action sitting on the brand gradient, where brand-600 would vanish. */
+  inverse: 'btn-inverse',
 };
 
 const SIZES: Record<Size, string> = {

@@ -42,7 +42,7 @@ export default function Modal({ open, title, description, onClose, children, siz
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 pt-[8vh] backdrop-blur-sm animate-overlay-in sm:items-center sm:pt-4"
+      className="fixed inset-0 z-modal flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 pt-16 backdrop-blur-sm animate-overlay-in sm:items-center sm:pt-4"
       onMouseDown={onClose}
       role="presentation"
     >
@@ -50,7 +50,7 @@ export default function Modal({ open, title, description, onClose, children, siz
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${SIZES[size]} rounded-2xl bg-white shadow-sheet animate-modal-in`}
+        className={`w-full ${SIZES[size]} rounded-overlay bg-white shadow-sheet animate-modal-in`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
@@ -61,7 +61,7 @@ export default function Modal({ open, title, description, onClose, children, siz
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="-mr-1 -mt-1 rounded-control p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
             <X className="h-4 w-4" strokeWidth={2.25} />
           </button>

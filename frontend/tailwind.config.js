@@ -1,4 +1,20 @@
-/** @type {import('tailwindcss').Config} */
+import colors from 'tailwindcss/colors';
+
+/**
+ * Design tokens.
+ *
+ * Everything a component needs to style itself should exist here, so a change
+ * of direction (a new accent, a softer radius, a wider type step) is one edit
+ * in one file rather than a sweep through JSX. The rules the app follows:
+ *
+ *   type      micro (labels/meta) -> xs -> sm (body, titles) -> base -> lg -> 2xl -> 3xl
+ *   radius    control (buttons, inputs, badges) -> surface (cards, panels) -> overlay (dialogs)
+ *   elevation card -> card-hover -> panel (containers) -> pop (menus) -> sheet (dialogs)
+ *   depth     base -> dropdown -> panel -> header -> modal -> toast
+ *   colour    brand (identity) + success/warning/danger/info (state) + slate (neutral)
+ *
+ * @type {import('tailwindcss').Config}
+ */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
@@ -6,6 +22,41 @@ export default {
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+      },
+      fontSize: {
+        /** Micro labels: badges, counters, ids, timestamps. One step, not five. */
+        micro: ['0.6875rem', { lineHeight: '1rem' }],
+      },
+      spacing: {
+        /** 18px — optical icon size that reads correctly inside 32px/36px tiles. */
+        '4.5': '1.125rem',
+      },
+      width: {
+        /** The fixed kanban column width shared by columns, skeletons and the add-list tile. */
+        column: '19rem',
+        /** Responsive toast stack width, so the container never touches the viewport edge. */
+        toast: 'min(23rem, calc(100vw - 2.5rem))',
+      },
+      maxWidth: {
+        /** Board switcher label cap before it truncates. */
+        switcher: '15rem',
+      },
+      minWidth: {
+        /** Dashboard search field floor, so the placeholder never gets clipped. */
+        search: '13rem',
+      },
+      borderRadius: {
+        control: '0.5rem',
+        surface: '0.75rem',
+        overlay: '1rem',
+      },
+      zIndex: {
+        base: '10',
+        dropdown: '20',
+        panel: '30',
+        header: '40',
+        modal: '50',
+        toast: '100',
       },
       colors: {
         brand: {
@@ -21,10 +72,22 @@ export default {
           900: '#312e81',
           950: '#1e1b4b',
         },
+        /*
+         * State ramps. Aliases of the palettes the app already used, so the
+         * rendered colours do not change — but components now say what a colour
+         * means (`text-danger-600`) instead of which hue it happens to be, and
+         * the shade is chosen once here instead of per component.
+         */
+        success: colors.emerald,
+        warning: colors.amber,
+        danger: colors.rose,
+        info: colors.sky,
       },
       boxShadow: {
         card: '0 1px 2px 0 rgb(15 23 42 / 0.05), 0 1px 3px 0 rgb(15 23 42 / 0.08)',
         'card-hover': '0 4px 8px -2px rgb(15 23 42 / 0.10), 0 12px 28px -8px rgb(15 23 42 / 0.18)',
+        /** Static containers (board columns, add-list tile). Reads as structure, not a popover. */
+        panel: '0 10px 30px -14px rgb(2 6 23 / 0.55)',
         pop: '0 12px 32px -8px rgb(15 23 42 / 0.28), 0 2px 6px -2px rgb(15 23 42 / 0.10)',
         sheet: '0 24px 64px -12px rgb(2 6 23 / 0.45)',
       },

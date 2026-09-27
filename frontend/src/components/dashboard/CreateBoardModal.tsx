@@ -61,7 +61,7 @@ export default function CreateBoardModal({ open, onClose, onCreated }: CreateBoa
           )}
         </Field>
 
-        <div className="rounded-xl bg-slate-50 p-3.5 ring-1 ring-inset ring-slate-100">
+        <div className="rounded-surface bg-slate-50 p-3.5 ring-1 ring-inset ring-slate-200/60">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
             <Sparkles className="h-3.5 w-3.5 text-brand-500" />
             Included lists
@@ -70,7 +70,7 @@ export default function CreateBoardModal({ open, onClose, onCreated }: CreateBoa
             {STARTER_LISTS.map((list) => (
               <span
                 key={list}
-                className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200"
+                className="rounded-control bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200/80"
               >
                 {list}
               </span>

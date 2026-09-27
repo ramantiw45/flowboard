@@ -18,17 +18,42 @@
     @apply bg-brand-500/25;
   }
 
-  /* Consistent, visible keyboard focus across the whole app */
+  /*
+   * Consistent, visible keyboard focus across the whole app.
+   *
+   * The ring and its offset are indirected through custom properties so a dark
+   * canvas can re-point them (see `.on-dark` below) without every component
+   * having to know which surface it sits on. Custom properties inherit, so the
+   * values resolve against the nearest canvas rather than the focused element,
+   * which is what makes a single global rule work on both the white app shell
+   * and the board canvas.
+   *
+   * The default colours are chosen to stay above the 3:1 non-text contrast
+   * requirement: brand-600 on white is 6.3:1, brand-300 on slate-950 is 9.9:1.
+   */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2;
+    --tw-ring-offset-width: 2px;
+    --tw-ring-offset-color: var(--fb-focus-offset, #ffffff);
+    --tw-ring-color: var(--fb-focus-ring, rgb(79 70 229 / 0.85));
   }
 }
 
 @layer components {
+  /*
+   * Marks a subtree that sits on a dark canvas (the board). Everything inside
+   * gets a dark focus offset and a lighter ring, so focus stays visible instead
+   * of turning into a white halo around a dark offset.
+   */
+  .on-dark {
+    --fb-focus-offset: #020617;
+    --fb-focus-ring: rgb(165 180 252 / 0.95);
+  }
+
   /* ---------- Buttons ---------- */
   .btn {
-    @apply inline-flex shrink-0 select-none items-center justify-center gap-1.5 rounded-lg text-sm font-semibold
-      transition-all duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex shrink-0 select-none items-center justify-center gap-1.5 rounded-control text-sm font-semibold
+      transition-all duration-150 active:scale-95 disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-sm {
     @apply px-2.5 py-1.5 text-xs;
@@ -37,20 +62,23 @@
     @apply px-3.5 py-2;
   }
   .btn-primary {
-    @apply bg-brand-600 text-white shadow-card hover:bg-brand-500 hover:shadow-card-hover
-      focus-visible:ring-offset-slate-900;
+    @apply bg-brand-600 text-white shadow-card hover:bg-brand-500 hover:shadow-card-hover;
+  }
+  /* For a primary action placed on the brand gradient (dashboard header). */
+  .btn-inverse {
+    @apply bg-white text-brand-700 shadow-card-hover hover:bg-white hover:text-brand-800;
   }
   .btn-secondary {
-    @apply bg-white text-slate-700 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 hover:text-slate-900;
+    @apply bg-white text-slate-700 ring-1 ring-inset ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900;
   }
   .btn-ghost {
     @apply text-slate-500 hover:bg-slate-100 hover:text-slate-800;
   }
   .btn-danger {
-    @apply bg-rose-600 text-white shadow-card hover:bg-rose-500;
+    @apply bg-danger-600 text-white shadow-card hover:bg-danger-500;
   }
   .btn-danger-ghost {
-    @apply text-rose-600 hover:bg-rose-50;
+    @apply text-danger-600 hover:bg-danger-50;
   }
   /* Translucent variant for use on the dark board canvas */
   .btn-glass {
@@ -59,20 +87,46 @@
 
   /* ---------- Form controls ---------- */
   .input {
-    @apply w-full rounded-lg border-0 bg-white py-2 px-3 text-sm text-slate-900 shadow-card ring-1 ring-inset
-      ring-slate-200 transition placeholder:text-slate-400
+    @apply w-full rounded-control border-0 bg-white py-2 px-3 text-sm text-slate-900 shadow-card ring-1 ring-inset
+      ring-slate-200/80 transition placeholder:text-slate-400
       focus:ring-2 focus:ring-inset focus:ring-brand-500;
   }
   .label {
     @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500;
   }
+  /*
+   * Chevron for <select>. A background image rather than a wrapper element,
+   * because the arrow has to sit inside the control's own ring/border.
+   */
+  .select-chevron {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-position: right 0.6rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem;
+  }
 
   /* ---------- Surfaces ---------- */
   .card-surface {
-    @apply rounded-xl bg-white shadow-card ring-1 ring-inset ring-slate-200/80;
+    @apply rounded-surface bg-white shadow-card ring-1 ring-inset ring-slate-200/80;
   }
   .menu {
-    @apply origin-top rounded-xl bg-white py-1 shadow-pop ring-1 ring-slate-900/5 animate-pop-in;
+    @apply origin-top rounded-surface bg-white py-1 shadow-pop ring-1 ring-slate-200/80 animate-pop-in;
+  }
+  /*
+   * Dot lattices. The alpha and pitch are baked in so call sites cannot drift
+   * into four near-identical hand-written gradients.
+   */
+  .dot-grid {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .dot-grid-cover {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+  .dot-grid-hero {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+    background-size: 18px 18px;
   }
 
   /* ---------- Kanban canvas ---------- */
@@ -122,7 +176,7 @@
 
 /* ---------- Skeleton shimmer ---------- */
 .skeleton {
-  @apply rounded-md bg-slate-200/80;
+  @apply rounded-control bg-slate-200/80;
   background-image: linear-gradient(
     90deg,
     rgb(226 232 240 / 0) 0%,

@@ -25,18 +25,18 @@ export function CardFace({ card, dragging = false }: { card: CardData; dragging?
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl bg-white p-3 shadow-card ring-1 ring-slate-900/5 ${
+      className={`group relative overflow-hidden rounded-surface bg-white p-3 shadow-card ring-1 ring-slate-200/80 ${
         dragging
-          ? 'rotate-1 scale-[1.02] cursor-grabbing shadow-pop ring-2 ring-brand-400'
+          ? 'rotate-1 scale-105 cursor-grabbing shadow-pop ring-2 ring-brand-400'
           : 'cursor-pointer transition duration-150 hover:-translate-y-0.5 hover:shadow-card-hover'
       }`}
     >
       {/* Priority accent rail on the card's left edge */}
       <span
         aria-hidden="true"
-        className={`absolute bottom-2 left-0 top-2 w-[3px] rounded-full ${PRIORITY_META[card.priority].rail}`}
+        className={`absolute bottom-2 left-0 top-2 w-1 rounded-full ${PRIORITY_META[card.priority].rail}`}
       />
-      <p className="line-clamp-3 text-[13.5px] font-semibold leading-snug text-slate-800 transition group-hover:text-brand-700">
+      <p className="line-clamp-3 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand-700">
         {card.title}
       </p>
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -47,7 +47,7 @@ export function CardFace({ card, dragging = false }: { card: CardData; dragging?
           </span>
         ) : (
           <span
-            className="font-mono text-[10px] text-slate-300 transition group-hover:text-slate-400"
+            className="font-mono text-micro text-slate-300 transition group-hover:text-slate-400"
             title={card.id}
           >
             #{card.id.slice(0, 8)}

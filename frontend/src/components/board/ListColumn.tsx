@@ -40,7 +40,7 @@ function mergeRefs<T>(...refs: ((node: T | null) => void)[]) {
 
 interface ListColumnProps {
   list: ListData;
-  /** Drag handle props â€” attached to the grip only, never to a <button>. */
+  /** Drag handle props — attached to the grip only, never to a <button>. */
   headerDragHandleProps?: DraggableProvidedDragHandleProps | null;
   onAddCard: (listId: string, title: string) => Promise<void>;
   onRenameList: (listId: string, name: string) => Promise<void>;
@@ -145,8 +145,8 @@ export default function ListColumn({
     // drag preview that @hello-pangea/dnd renders, which offsets the dragged
     // card from the cursor; `overflow: hidden` then clips it. Both were
     // measured at a ~115px vertical offset during real drags.
-    <div className="flex h-full max-h-full w-[19rem] shrink-0 flex-col rounded-2xl bg-slate-900/90 shadow-pop ring-1 ring-inset ring-white/10">
-      {/* Header. The drag handle is the grip only â€” the library refuses to
+    <div className="flex h-full max-h-full w-column shrink-0 flex-col rounded-surface bg-slate-900/90 shadow-panel ring-1 ring-inset ring-white/10">
+      {/* Header. The drag handle is the grip only — the library refuses to
           start a drag when the press lands on a <button>. */}
       <div className="flex items-center gap-1.5 px-2 py-2.5">
         {!renaming && (
@@ -156,7 +156,7 @@ export default function ListColumn({
             tabIndex={0}
             aria-label={`Reorder ${list.name}. Use left and right arrow keys to move.`}
             onKeyDown={onGripKeyDown}
-            className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-slate-500 transition hover:bg-white/10 hover:text-slate-200 focus-visible:text-slate-200 active:cursor-grabbing"
+            className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded-control text-slate-500 transition hover:bg-white/10 hover:text-slate-200 focus-visible:text-slate-200 active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
           </div>
@@ -171,7 +171,7 @@ export default function ListColumn({
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Escape' && cancelRename()}
               aria-label="List name"
-              className="min-w-0 flex-1 rounded-md bg-white/10 px-2 py-1 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-500"
+              className="min-w-0 flex-1 rounded-control bg-white/10 px-2 py-1 text-sm text-white ring-1 ring-inset ring-brand-400 transition placeholder:text-slate-500"
             />
             <Button
               type="submit"
@@ -195,12 +195,12 @@ export default function ListColumn({
             <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${listAccent(list.id)}`} />
             <button
               onClick={() => { setRenameValue(list.name); setRenaming(true); }}
-              className="min-w-0 flex-1 truncate text-left text-[13px] font-bold text-white transition hover:text-brand-300"
+              className="min-w-0 flex-1 truncate text-left text-sm font-bold text-white transition hover:text-brand-300"
               title="Rename list"
             >
               {list.name}
             </button>
-            <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-slate-400">
+            <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-micro font-semibold text-slate-400">
               {list.cards.length}
             </span>
             <div ref={menuRef} className="relative shrink-0">
@@ -209,12 +209,12 @@ export default function ListColumn({
                 aria-label={`Actions for ${list.name}`}
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
-                className={`rounded-lg p-1.5 transition ${menuOpen ? 'bg-white/15 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                className={`rounded-control p-1.5 transition ${menuOpen ? 'bg-white/15 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
               >
                 <MoreHorizontal className="h-4 w-4" />
               </button>
               {menuOpen && (
-                <div role="menu" className="menu absolute right-0 top-[calc(100%+0.4rem)] z-30 w-40">
+                <div role="menu" className="menu absolute right-0 top-full z-dropdown mt-1.5 w-44">
                   <button
                     role="menuitem"
                     onClick={() => { setMenuOpen(false); setRenameValue(list.name); setRenaming(true); }}
@@ -226,7 +226,7 @@ export default function ListColumn({
                   <button
                     role="menuitem"
                     onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-danger-600 transition hover:bg-danger-50"
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete list
@@ -263,11 +263,11 @@ export default function ListColumn({
             {...provided.droppableProps}
             onScroll={virtual.onScroll}
             className={`thin-scrollbar-light min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2 ${
-              snapshot.isDraggingOver ? 'rounded-lg bg-brand-500/10 ring-2 ring-inset ring-brand-400/40' : ''
+              snapshot.isDraggingOver ? 'rounded-control bg-brand-500/10 ring-2 ring-inset ring-brand-400/40' : ''
             }`}
           >
             {list.cards.length === 0 && (
-              <div className="rounded-lg border border-dashed border-white/15 px-3 py-6 text-center text-xs text-slate-500">
+              <div className="rounded-control border border-dashed border-white/15 px-3 py-6 text-center text-xs text-slate-500">
                 Drop cards here
               </div>
             )}
@@ -299,7 +299,7 @@ export default function ListColumn({
       {/* Add card */}
       <div className="shrink-0 p-2">
         {adding ? (
-          <form onSubmit={submitCard} className="rounded-xl bg-slate-950/50 p-2 ring-1 ring-inset ring-white/10">
+          <form onSubmit={submitCard} className="rounded-surface bg-slate-950/50 p-2 ring-1 ring-inset ring-white/10">
             <TextArea
               autoFocus
               rows={2}
@@ -326,7 +326,7 @@ export default function ListColumn({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center gap-1.5 rounded-control px-2 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-white/10 hover:text-white"
           >
             <Plus className="h-4 w-4" />
             Add a card

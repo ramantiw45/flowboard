@@ -18,13 +18,13 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
     <div>
       <label className="label" htmlFor={id}>
         {label}
-        {required && <span className="ml-0.5 text-rose-500">*</span>}
+        {required && <span className="ml-0.5 text-danger-500">*</span>}
       </label>
       {children({ id, describedBy })}
       {message && (
         <p
           id={`${id}-msg`}
-          className={`mt-1.5 text-xs ${error ? 'font-medium text-rose-600' : 'text-slate-400'}`}
+          className={`mt-1.5 text-xs ${error ? 'font-medium text-danger-600' : 'text-slate-400'}`}
         >
           {message}
         </p>
@@ -44,11 +44,7 @@ export function TextArea({ className = '', ...rest }: TextareaHTMLAttributes<HTM
 export function SelectInput({ className = '', ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`input cursor-pointer appearance-none bg-[length:1rem] bg-[right_0.6rem_center] bg-no-repeat pr-9 ${className}`}
-      style={{
-        backgroundImage:
-          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E\")",
-      }}
+      className={`input select-chevron cursor-pointer appearance-none pr-9 ${className}`}
       {...rest}
     />
   );

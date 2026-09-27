@@ -34,7 +34,7 @@ export default function UserMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 overflow-hidden rounded-xl bg-white shadow-pop ring-1 ring-slate-900/5 animate-pop-in"
+          className="absolute right-0 top-full z-dropdown mt-2 w-64 overflow-hidden rounded-surface bg-white shadow-pop ring-1 ring-slate-200/80 animate-pop-in"
         >
           <div className="flex items-center gap-3 border-b border-slate-100 px-3.5 py-3">
             <Avatar name={user?.displayName ?? '?'} size="md" ring={false} />
@@ -46,7 +46,7 @@ export default function UserMenu() {
           <button
             role="menuitem"
             onClick={signOut}
-            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-danger-600 transition hover:bg-danger-50"
           >
             <LogOut className="h-4 w-4" />
             Sign out

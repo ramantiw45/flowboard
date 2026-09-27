@@ -14,26 +14,26 @@ export default function ConnectionStatus({ connected, tone = 'light', withLabel 
   return (
     <span
       title={connected ? 'Connected — changes sync in real time' : 'Connection lost — retrying…'}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-micro font-semibold ${
         connected
           ? tone === 'dark'
-            ? 'bg-emerald-400/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/25'
-            : 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100'
+            ? 'bg-success-400/10 text-success-300 ring-1 ring-inset ring-success-400/25'
+            : 'bg-success-50 text-success-700 ring-1 ring-inset ring-success-100'
           : tone === 'dark'
-            ? 'bg-amber-400/10 text-amber-300 ring-1 ring-inset ring-amber-400/25'
-            : 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-100'
+            ? 'bg-warning-400/10 text-warning-300 ring-1 ring-inset ring-warning-400/25'
+            : 'bg-warning-50 text-warning-700 ring-1 ring-inset ring-warning-100'
       }`}
     >
       <span className="relative flex h-2 w-2">
         {connected && (
           <span
             className={`absolute inline-flex h-full w-full animate-ping-soft rounded-full ${
-              connected ? 'bg-emerald-400' : 'bg-amber-400'
+              connected ? 'bg-success-400' : 'bg-warning-400'
             }`}
           />
         )}
         <span
-          className={`relative inline-flex h-2 w-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          className={`relative inline-flex h-2 w-2 rounded-full ${connected ? 'bg-success-500' : 'bg-warning-500'}`}
         />
       </span>
       {withLabel && label}

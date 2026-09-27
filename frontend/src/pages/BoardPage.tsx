@@ -428,7 +428,7 @@ export default function BoardPage() {
   // ---------- render ----------
   if (loading) {
     return (
-      <div className="board-canvas flex min-h-0 flex-1 flex-col">
+      <div className="board-canvas on-dark flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/40 px-4 py-3 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <div className="skeleton h-4 w-36 bg-white/15" />
@@ -449,7 +449,7 @@ export default function BoardPage() {
   }
   if (!boardName) {
     return (
-      <div className="board-canvas flex min-h-0 flex-1 items-center justify-center p-6">
+      <div className="board-canvas on-dark flex min-h-0 flex-1 items-center justify-center p-6">
         <div className="w-full max-w-md">
           <EmptyState
             icon={CircleSlash}
@@ -468,7 +468,7 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="board-canvas flex min-h-0 flex-1 flex-col">
+    <div className="board-canvas on-dark flex min-h-0 flex-1 flex-col">
       <BoardHeader
         boardName={boardName}
         members={members}
@@ -521,7 +521,7 @@ export default function BoardPage() {
             </Droppable>
 
             {lists.length === 0 && (
-              <div className="flex w-[19rem] shrink-0 flex-col items-center gap-1 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-center">
+              <div className="flex w-column shrink-0 flex-col items-center gap-1 rounded-surface border border-dashed border-white/15 bg-white/5 px-4 py-6 text-center">
                 <p className="text-sm font-semibold text-white">No lists yet</p>
                 <p className="text-xs leading-relaxed text-slate-400">
                   Lists are the columns of your board. Start with one below.

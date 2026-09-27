@@ -31,7 +31,7 @@ export default function Navbar() {
     : undefined;
 
   return (
-    <header className="z-40 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-3 backdrop-blur-md sm:px-4">
+    <header className="z-header flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-3 backdrop-blur-md sm:px-4">
       <div className="flex min-w-0 items-center gap-1.5">
         <Link
           to="/boards"
@@ -40,7 +40,7 @@ export default function Navbar() {
             if (currentBoardId === undefined) e.preventDefault();
             else navigate('/boards');
           }}
-          className="rounded-lg p-1 transition hover:opacity-80"
+          className="rounded-control p-1 transition hover:opacity-80"
         >
           <Logo size="sm" />
         </Link>

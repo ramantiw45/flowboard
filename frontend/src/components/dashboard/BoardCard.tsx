@@ -45,7 +45,7 @@ export default function BoardCard({ board }: BoardCardProps) {
         aria-label={`Open ${board.name}`}
         className={`relative flex h-24 items-end bg-gradient-to-br ${coverGradient(board.id)}`}
       >
-        <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:14px_14px]" />
+        <div className="absolute inset-0 dot-grid-cover" />
         <span className="relative mb-3 ml-4 select-none text-4xl font-black leading-none text-white/30">
           {initials || 'B'}
         </span>
@@ -57,20 +57,20 @@ export default function BoardCard({ board }: BoardCardProps) {
           aria-label={`Actions for ${board.name}`}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          className="rounded-lg bg-white/20 p-1.5 text-white opacity-0 backdrop-blur-sm transition hover:bg-white/35 focus-visible:opacity-100 group-hover:opacity-100"
+          className="rounded-control bg-white/20 p-1.5 text-white opacity-0 backdrop-blur-sm transition hover:bg-white/35 focus-visible:opacity-100 group-hover:opacity-100"
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
 
         {menuOpen && (
-          <div role="menu" className="menu absolute right-0 top-[calc(100%+0.4rem)] z-20 w-44">
+          <div role="menu" className="menu absolute right-0 top-full z-dropdown mt-1.5 w-44">
             <button
               role="menuitem"
               onClick={() => void copyLink()}
               className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               {copied ? (
-                <Check className="h-4 w-4 text-emerald-500" />
+                <Check className="h-4 w-4 text-success-500" />
               ) : (
                 <Share2 className="h-4 w-4 text-slate-400" />
               )}
@@ -92,7 +92,7 @@ export default function BoardCard({ board }: BoardCardProps) {
         <div className="min-w-0">
           <Link
             to={`/boards/${board.id}`}
-            className="block truncate text-[15px] font-bold tracking-tight text-slate-900 transition group-hover:text-brand-600"
+            className="block truncate text-base font-bold tracking-tight text-slate-900 transition group-hover:text-brand-600"
           >
             {board.name}
           </Link>
@@ -107,7 +107,7 @@ export default function BoardCard({ board }: BoardCardProps) {
 
         <div className="mt-4 flex items-end justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="flex items-center gap-1 text-[11px] font-medium text-slate-400">
+            <span className="flex items-center gap-1 text-micro font-medium text-slate-400">
               <CalendarDays className="h-3.5 w-3.5" />
               {shortDate(board.createdAt)}
             </span>
@@ -116,7 +116,7 @@ export default function BoardCard({ board }: BoardCardProps) {
 
           <Link
             to={`/boards/${board.id}`}
-            className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-brand-600 hover:text-white"
+            className="shrink-0 rounded-control bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-brand-600 hover:text-white"
           >
             Open board
           </Link>

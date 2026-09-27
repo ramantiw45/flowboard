@@ -11,13 +11,13 @@ export default function Logo({
   tone?: 'light' | 'dark';
 }) {
   const box = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-11 w-11' : 'h-8 w-8';
-  const icon = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-[18px] w-[18px]';
-  const text = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-[13px]' : 'text-[15px]';
+  const icon = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-4.5 w-4.5';
+  const text = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-sm' : 'text-base';
 
   return (
     <span className="flex select-none items-center gap-2.5">
       <span
-        className={`flex ${box} items-center justify-center rounded-[10px] bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-md shadow-brand-600/25`}
+        className={`flex ${box} items-center justify-center rounded-surface bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-md shadow-brand-600/25`}
       >
         <SquareKanban className={icon} strokeWidth={2.25} />
       </span>

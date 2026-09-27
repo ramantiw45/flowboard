@@ -20,7 +20,8 @@ interface InviteMemberModalProps {
 
 /** Role pill tones, ordered from highest to lowest privilege. */
 const ROLE_STYLES: Record<BoardMember['role'], string> = {
-  OWNER: 'bg-amber-50 text-amber-700 ring-amber-200/80',
+  /** Warm ramp, reused from warning: "elevated privilege", not an alert state. */
+  OWNER: 'bg-warning-50 text-warning-700 ring-warning-200/80',
   ADMIN: 'bg-brand-50 text-brand-700 ring-brand-200/80',
   MEMBER: 'bg-slate-50 text-slate-600 ring-slate-200',
 };
@@ -126,7 +127,7 @@ export default function InviteMemberModal({
             </Button>
           </form>
         ) : (
-          <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-500 ring-1 ring-inset ring-slate-100">
+          <p className="rounded-surface bg-slate-50 px-3 py-2.5 text-xs text-slate-500 ring-1 ring-inset ring-slate-200/60">
             Only board admins can invite new members.
           </p>
         )}
@@ -136,7 +137,7 @@ export default function InviteMemberModal({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Current members · {members.length}
             </h3>
-            <ul className="thin-scrollbar max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-xl ring-1 ring-inset ring-slate-100">
+            <ul className="thin-scrollbar max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-surface ring-1 ring-inset ring-slate-200/60">
               {members.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 px-3 py-2.5">
                   <Avatar name={m.displayName} size="sm" title={m.email} />
@@ -165,7 +166,7 @@ export default function InviteMemberModal({
                     </>
                   ) : (
                     <span
-                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${ROLE_STYLES[m.role]}`}
+                      className={`shrink-0 rounded-control px-1.5 py-0.5 text-micro font-bold uppercase tracking-wide ring-1 ring-inset ${ROLE_STYLES[m.role]}`}
                     >
                       {m.role}
                     </span>

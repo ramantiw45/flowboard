@@ -40,7 +40,7 @@ export default function BoardSwitcher({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="flex max-w-[15rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-inset ring-transparent transition hover:bg-slate-100 hover:text-slate-900 hover:ring-slate-200"
+        className="flex max-w-switcher items-center gap-1.5 rounded-control px-2.5 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-inset ring-transparent transition hover:bg-slate-100 hover:text-slate-900 hover:ring-slate-200/80"
       >
         <SquareKanban className="h-4 w-4 shrink-0 text-slate-400" />
         <span className="truncate">{current ? current.name : 'Switch board'}</span>
@@ -48,7 +48,7 @@ export default function BoardSwitcher({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-xl bg-white shadow-pop ring-1 ring-slate-900/5 animate-pop-in">
+        <div className="absolute left-0 top-full z-dropdown mt-2 w-72 overflow-hidden rounded-surface bg-white shadow-pop ring-1 ring-slate-200/80 animate-pop-in">
           <div className="border-b border-slate-100 p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -70,7 +70,7 @@ export default function BoardSwitcher({
               <li key={board.id}>
                 <button
                   onClick={() => go(board.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition ${
+                  className={`flex w-full items-center gap-2.5 rounded-control px-2.5 py-2 text-left text-sm transition ${
                     board.id === currentBoardId ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >

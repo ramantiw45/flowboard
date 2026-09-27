@@ -24,7 +24,7 @@ export default function BoardHeader({
   return (
     <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-950/40 px-3 py-2.5 backdrop-blur-md sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <h1 className="min-w-0 truncate text-[15px] font-bold tracking-tight text-white">{boardName}</h1>
+        <h1 className="min-w-0 truncate text-base font-bold tracking-tight text-white">{boardName}</h1>
         <span className="shrink-0">
           <ConnectionStatus connected={connected} tone="dark" />
         </span>

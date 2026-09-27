@@ -72,12 +72,12 @@ export default function CardDetailsModal({
         size="lg"
       >
         <form onSubmit={handleSave} className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5 ring-1 ring-inset ring-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-surface bg-slate-50 px-3.5 py-2.5 ring-1 ring-inset ring-slate-200/60">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Current</span>
               <PriorityBadge priority={card.priority} />
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <div className="flex items-center gap-3 text-micro text-slate-400">
               <span className="flex items-center gap-1">
                 <History className="h-3.5 w-3.5" />
                 {cardActivity.length} event{cardActivity.length === 1 ? '' : 's'}
@@ -129,7 +129,7 @@ export default function CardDetailsModal({
                     type="button"
                     aria-pressed={active}
                     onClick={() => setPriority(p)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition ${
+                    className={`inline-flex items-center gap-1.5 rounded-control px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition ${
                       active
                         ? `${meta.badge} ring-2`
                         : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50 hover:text-slate-700'
@@ -150,7 +150,7 @@ export default function CardDetailsModal({
                 <History className="h-3.5 w-3.5 text-slate-400" />
                 Card history
               </p>
-              <ul className="thin-scrollbar max-h-40 space-y-1.5 overflow-y-auto rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-100">
+              <ul className="thin-scrollbar max-h-40 space-y-1.5 overflow-y-auto rounded-surface bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200/60">
                 {cardActivity.map((a) => (
                   <li key={a.id} className="flex items-start gap-2 text-xs text-slate-600">
                     <AlignLeft className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />

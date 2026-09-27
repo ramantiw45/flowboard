@@ -27,9 +27,9 @@ const ICONS = {
 } as const;
 
 const ACCENT = {
-  success: 'text-emerald-400',
-  error: 'text-rose-400',
-  info: 'text-sky-400',
+  success: 'text-success-400',
+  error: 'text-danger-400',
+  info: 'text-info-400',
 } as const;
 
 const MAX_VISIBLE = 4;
@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {createPortal(
         <div
-          className="pointer-events-none fixed bottom-5 right-5 z-[100] flex w-[min(23rem,calc(100vw-2.5rem))] flex-col gap-2"
+          className="pointer-events-none fixed bottom-5 right-5 z-toast flex w-toast flex-col gap-2"
           role="region"
           aria-live="polite"
         >
@@ -71,14 +71,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             return (
               <div
                 key={t.id}
-                className="pointer-events-auto flex items-start gap-3 overflow-hidden rounded-xl bg-slate-900/95 px-3.5 py-3 text-sm text-slate-100 shadow-sheet ring-1 ring-white/10 backdrop-blur animate-toast-in"
+                className="pointer-events-auto flex items-start gap-3 overflow-hidden rounded-surface bg-slate-900/95 px-3.5 py-3 text-sm text-slate-100 shadow-sheet ring-1 ring-white/10 backdrop-blur animate-toast-in"
               >
                 <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${ACCENT[t.kind]}`} />
                 <span className="flex-1 leading-snug">{t.message}</span>
                 <button
                   onClick={() => dismiss(t.id)}
                   aria-label="Dismiss notification"
-                  className="-mr-1 rounded-md p-1 text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                  className="-mr-1 rounded-control p-1 text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
