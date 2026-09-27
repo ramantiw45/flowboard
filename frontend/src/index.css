@@ -113,21 +113,11 @@
     @apply origin-top rounded-surface bg-white py-1 shadow-pop ring-1 ring-slate-200/80 animate-pop-in;
   }
   /*
-   * Dot lattices. The alpha and pitch are baked in so call sites cannot drift
-   * into four near-identical hand-written gradients.
+   * The board canvas keeps its dot lattice: it gives the columns something to
+   * sit on and reads as a workspace rather than an empty page. The auth and
+   * dashboard overlays that used to share it are gone - three near-identical
+   * textures across the product was a texture, not a motif.
    */
-  .dot-grid {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-    background-size: 22px 22px;
-  }
-  .dot-grid-cover {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
-    background-size: 14px 14px;
-  }
-  .dot-grid-hero {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
-    background-size: 18px 18px;
-  }
 
   /* ---------- Kanban canvas ---------- */
   .board-canvas {
@@ -190,10 +180,12 @@
 /* ---------- Auth page backdrop ---------- */
 .auth-canvas {
   background-color: #0b1020;
-  background-image:
-    radial-gradient(40rem 30rem at 15% 10%, rgba(99, 102, 241, 0.35), transparent 60%),
-    radial-gradient(36rem 28rem at 85% 8%, rgba(217, 70, 239, 0.22), transparent 58%),
-    radial-gradient(50rem 34rem at 60% 100%, rgba(14, 165, 233, 0.2), transparent 60%);
+  /*
+   * One wash, not three. The previous indigo/fuchsia/sky radials were the same
+   * trick at three positions, which is why the sign-in page read as a landing
+   * page rather than a way in.
+   */
+  background-image: radial-gradient(46rem 34rem at 18% 8%, rgba(99, 102, 241, 0.3), transparent 62%);
 }
 
 /* ---------- Motion preferences ---------- */

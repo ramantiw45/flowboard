@@ -16,10 +16,15 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // Inline rather than toast-only: see LoginPage. The duplicate-address case
+  // still navigates, so it keeps its toast, but a failure the user can act on
+  // here has to be attached to the form.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    setFormError(null);
     try {
       const created = await signup(email, displayName, password);
       if (created) {
@@ -35,7 +40,7 @@ export default function RegisterPage() {
         navigate('/login');
       }
     } catch (err) {
-      push(apiError(err), 'error');
+      setFormError(apiError(err));
     } finally {
       setBusy(false);
     }
@@ -55,13 +60,23 @@ export default function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-control bg-danger-50 px-3 py-2.5 text-sm font-medium text-danger-700 ring-1 ring-inset ring-danger-200"
+          >
+            {formError}
+          </p>
+        )}
+
         <Field label="Full name" required hint="Shown to teammates on cards and in the activity feed.">
           {({ id, describedBy }) => (
             <div className="relative">
-              <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
               <TextInput
                 id={id}
                 aria-describedby={describedBy}
+                aria-invalid={formError ? true : undefined}
                 type="text"
                 required
                 minLength={2}

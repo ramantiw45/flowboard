@@ -545,11 +545,12 @@ async function runKeyboard(s) {
 
   // --- 3. Escape unwinds one dialog at a time --------------------------
   const openedConfirm = await s.evaluate(`(() => {
-    const btn = [...document.querySelectorAll('[role="dialog"] button')]
-      .find((b) => /delete/i.test(b.textContent || ''));
-    if (!btn) return 'no-delete-button';
+    const btns = [...document.querySelectorAll('[role="dialog"] button')];
+    const labels = btns.map((b) => (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 24));
+    const btn = btns.find((b) => /delete/i.test((b.getAttribute('aria-label') || b.textContent || '')));
+    if (!btn) return JSON.stringify({ error: 'no-delete-button', dialogs: document.querySelectorAll('[role="dialog"]').length, labels });
     btn.click();
-    return 'clicked';
+    return JSON.stringify({ clicked: true, labels });
   })()`);
   await sleep(1000);
   let stacked = JSON.parse(await focusInfo());

@@ -1,12 +1,14 @@
+/**
+ * Avatar fill, two accents plus a neutral.
+ *
+ * An avatar is an identity marker, not decoration, so it uses the same two
+ * accents as the rest of the product rather than a private eight-hue palette.
+ */
 const PALETTE = [
-  'from-indigo-500 to-violet-500',
-  'from-emerald-500 to-teal-500',
-  'from-amber-500 to-orange-500',
-  'from-rose-500 to-pink-500',
-  'from-sky-500 to-cyan-500',
-  'from-violet-500 to-fuchsia-500',
-  'from-blue-500 to-indigo-500',
-  'from-teal-500 to-emerald-500',
+  'from-brand-500 to-brand-600',
+  'from-sky-500 to-sky-600',
+  'from-brand-600 to-sky-600',
+  'from-slate-500 to-slate-600',
 ];
 
 function styleFor(name: string): string {
@@ -15,7 +17,7 @@ function styleFor(name: string): string {
   return PALETTE[Math.abs(hash) % PALETTE.length];
 }
 
-/** Two-letter initials so teammates are recognizable at a glance. */
+/** First and last initial, so a teammate is recognizable without a photo. */
 function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -41,7 +43,10 @@ interface AvatarProps {
 
 export default function Avatar({ name, size = 'md', title, ring = true, className = '' }: AvatarProps) {
   return (
+    // role="img" is what makes the label reach assistive tech: aria-label on a
+    // plain div is ignored, so the avatar announced as an unlabelled group.
     <div
+      role="img"
       title={title ?? name}
       aria-label={title ?? name}
       className={`flex ${SIZES[size]} shrink-0 select-none items-center justify-center rounded-full bg-gradient-to-br font-bold tracking-tight text-white shadow-sm ${styleFor(name)} ${
@@ -72,6 +77,8 @@ export function AvatarStack({
       ))}
       {rest > 0 && (
         <div
+          role="img"
+          aria-label={`${rest} more`}
           title={`${rest} more`}
           className={`flex ${SIZES[size]} items-center justify-center rounded-full bg-slate-200 font-bold text-slate-600 ring-2 ring-white`}
         >

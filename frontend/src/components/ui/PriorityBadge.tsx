@@ -1,7 +1,7 @@
 import type { CardData } from '../../types';
 import { PRIORITY_META } from '../../utils/priority';
 
-/** Compact pill used on cards and in the details header. */
+
 export default function PriorityBadge({
   priority,
   className = '',

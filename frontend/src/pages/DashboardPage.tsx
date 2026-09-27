@@ -63,9 +63,7 @@ export default function DashboardPage() {
 
   return (
     <div className="thin-scrollbar flex-1 overflow-y-auto bg-slate-100">
-      {/* Gradient page header keeps the dashboard from feeling flat */}
-      <div className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-br from-brand-600 via-brand-500 to-violet-500">
-        <div className="absolute inset-0 dot-grid-hero" />
+      <div className="relative overflow-hidden border-b border-slate-200 bg-brand-700">
         <div className="relative mx-auto flex max-w-6xl flex-col gap-5 px-5 pb-16 pt-10 sm:px-8">
           <div>
             <p className="text-sm font-medium text-white/80">Workspace</p>

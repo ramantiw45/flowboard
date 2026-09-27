@@ -1,4 +1,4 @@
-/** Shimmering placeholders that mirror the shape of real content. */
+
 export function Skeleton({ className = 'h-4 w-full' }: { className?: string }) {
   return <div className={`skeleton ${className}`} aria-hidden />;
 }

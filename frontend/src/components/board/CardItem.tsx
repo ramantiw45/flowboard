@@ -46,8 +46,13 @@ export function CardFace({ card, dragging = false }: { card: CardData; dragging?
             <AlignLeft className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
           </span>
         ) : (
+          /*
+           * The id is a debugging affordance, not content: permanently visible
+           * on every card it read as low-contrast debris. It stays in the DOM and
+           * in the tooltip for support, surfacing on hover or keyboard focus.
+           */
           <span
-            className="font-mono text-micro text-slate-400 transition group-hover:text-slate-500"
+            className="font-mono text-micro text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus:opacity-100"
             title={card.id}
           >
             #{card.id.slice(0, 8)}

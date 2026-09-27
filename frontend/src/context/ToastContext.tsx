@@ -61,10 +61,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ push }}>
       {children}
       {createPortal(
+        // aria-atomic so a multi-clause message ("If that email was free ...")
+        // is announced whole rather than only the fragment that changed.
         <div
           className="pointer-events-none fixed bottom-5 right-5 z-toast flex w-toast flex-col gap-2"
           role="region"
+          aria-label="Notifications"
           aria-live="polite"
+          aria-atomic="true"
         >
           {toasts.map((t) => {
             const Icon = ICONS[t.kind];
@@ -73,14 +77,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 key={t.id}
                 className="pointer-events-auto flex items-start gap-3 overflow-hidden rounded-surface bg-slate-900/95 px-3.5 py-3 text-sm text-slate-100 shadow-sheet ring-1 ring-white/10 backdrop-blur animate-toast-in"
               >
-                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${ACCENT[t.kind]}`} />
+                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${ACCENT[t.kind]}`} aria-hidden="true" />
                 <span className="flex-1 leading-snug">{t.message}</span>
                 <button
                   onClick={() => dismiss(t.id)}
                   aria-label="Dismiss notification"
-                  className="-mr-1 rounded-control p-1 text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                  className="-mr-1 flex min-h-8 min-w-8 shrink-0 items-center justify-center rounded-control p-1 text-slate-400 transition hover:bg-white/10 hover:text-slate-100"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               </div>
             );

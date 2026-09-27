@@ -13,7 +13,13 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-/** Branded replacement for window.confirm — keeps destructive actions in-app. */
+/**
+ * Confirmation for a destructive action.
+ *
+ * Replaces window.confirm so the copy can be specific about what is being
+ * deleted and the buttons can be styled, focus-trapped and translated with the
+ * rest of the app.
+ */
 export default function ConfirmDialog({
   open,
   title,

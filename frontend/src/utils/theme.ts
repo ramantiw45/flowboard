@@ -1,13 +1,18 @@
-/** Deterministic cover gradient per board, so each board feels distinct. */
+/**
+ * Cover tint per board.
+ *
+ * Two hues and two neutrals, not a hue per hue. A Kanban board puts this
+ * palette next to the priority badges, the column accents and the avatars, so
+ * a wider spread reads as noise rather than as identity: the eye cannot tell
+ * a decorative colour from a meaningful one. `sky` sits next to `brand` on the
+ * wheel on purpose - an analogous second accent reads as one decision, where a
+ * complement reads as a sticker sheet.
+ */
 const COVERS = [
-  'from-indigo-500 via-blue-500 to-sky-400',
-  'from-violet-600 via-purple-500 to-fuchsia-500',
-  'from-emerald-500 via-teal-500 to-cyan-500',
-  'from-orange-500 via-amber-500 to-yellow-400',
-  'from-rose-500 via-pink-500 to-fuchsia-500',
-  'from-blue-600 via-indigo-500 to-violet-500',
-  'from-teal-500 via-emerald-500 to-lime-400',
-  'from-slate-700 via-slate-600 to-slate-500',
+  'from-brand-600 to-brand-400',
+  'from-brand-700 to-brand-500',
+  'from-sky-600 to-sky-400',
+  'from-slate-700 to-slate-500',
 ];
 
 function hash(id: string): number {
@@ -20,17 +25,14 @@ export function coverGradient(seed: string): string {
   return COVERS[hash(seed) % COVERS.length];
 }
 
-/** Accent bar colour for a kanban list, stable per list id. */
-const LIST_ACCENTS = [
-  'bg-indigo-400',
-  'bg-sky-400',
-  'bg-emerald-400',
-  'bg-amber-400',
-  'bg-rose-400',
-  'bg-violet-400',
-  'bg-teal-400',
-  'bg-fuchsia-400',
-];
+/**
+ * Accent bar for a kanban list, stable per list id.
+ *
+ * Tints of the same two accents rather than eight distinct hues. The dot on
+ * each list header has to be identifiable at a glance without competing with
+ * the priority colours on the cards beneath it.
+ */
+const LIST_ACCENTS = ['bg-brand-400', 'bg-sky-400', 'bg-brand-300', 'bg-sky-300'];
 
 export function listAccent(seed: string): string {
   return LIST_ACCENTS[hash(seed) % LIST_ACCENTS.length];

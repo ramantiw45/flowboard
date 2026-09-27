@@ -1,6 +1,5 @@
 import { SquareKanban } from 'lucide-react';
 
-/** Gradient brand mark + wordmark used in the top bar and auth screens. */
 export default function Logo({
   size = 'md',
   withWordmark = true,
@@ -16,8 +15,12 @@ export default function Logo({
 
   return (
     <span className="flex select-none items-center gap-2.5">
+      {/*
+       * Solid, not a gradient: this tile is where the brand colour is spent, so
+       * a second hue and a glow shadow here only dilute it.
+       */}
       <span
-        className={`flex ${box} items-center justify-center rounded-surface bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-md shadow-brand-600/25`}
+        className={`flex ${box} items-center justify-center rounded-surface bg-brand-600 text-white shadow-card`}
       >
         <SquareKanban className={icon} strokeWidth={2.25} />
       </span>

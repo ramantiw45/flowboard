@@ -31,33 +31,31 @@ export default function BoardCard({ board }: BoardCardProps) {
     }
   };
 
-  const initials = board.name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-
   return (
     <article className="card-surface group relative flex flex-col overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover">
-      {/* Decorative cover gives every board a distinct, scannable identity */}
+      {/*
+       * Cover strip: colour only. The board name is already the card's heading
+       * right below, so repeating it here - as a giant ghosted initial - only
+       * competed with the title it was meant to identify.
+       */}
       <Link
         to={`/boards/${board.id}`}
         aria-label={`Open ${board.name}`}
-        className={`relative flex h-24 items-end bg-gradient-to-br ${coverGradient(board.id)}`}
-      >
-        <div className="absolute inset-0 dot-grid-cover" />
-        <span className="relative mb-3 ml-4 select-none text-4xl font-black leading-none text-white/30">
-          {initials || 'B'}
-        </span>
-      </Link>
+        className={`relative block h-16 bg-gradient-to-br ${coverGradient(board.id)}`}
+      />
 
       <div ref={menuRef} className="absolute right-2.5 top-2.5">
+        {/*
+         * Visible by default and hidden only where a hover can reveal it. The
+         * previous `opacity-0 group-hover:opacity-100` left the button - and its
+         * copy-link and open actions - permanently unreachable on touch.
+         */}
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={`Actions for ${board.name}`}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          className="flex min-h-8 min-w-8 items-center justify-center rounded-control bg-white/25 p-1.5 text-white opacity-0 backdrop-blur-sm transition hover:bg-white/35 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+          className="flex min-h-8 min-w-8 items-center justify-center rounded-control bg-white/25 p-1.5 text-white transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 hover:bg-white/35 hover:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </button>

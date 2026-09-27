@@ -67,7 +67,7 @@ export default function CardDetailsModal({
       <Modal
         open
         title={card.title}
-        description={`Created ${timeAgo(card.createdAt)} · version ${card.version}`}
+        description={`Created ${timeAgo(card.createdAt)}`}
         onClose={onClose}
         size="lg"
       >
