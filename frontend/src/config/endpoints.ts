@@ -142,12 +142,22 @@ export function connectSources(
 export function buildCsp(
   apiBaseUrl: string,
   wsUrl: string,
-  options: { meta?: boolean; currentOrigin?: string } = {}
+  options: { meta?: boolean; currentOrigin?: string; dev?: boolean } = {}
 ): string {
   const connectSrc = connectSources(apiBaseUrl, wsUrl, options.currentOrigin);
+  // `script-src` omits 'unsafe-inline' and 'unsafe-eval' in the built app:
+  // there is no inline <script> and no eval()/new Function() anywhere in src,
+  // so neither is needed. The Vite dev server is the exception: it injects an
+  // inline preamble (@vitejs/plugin-react) and evaluates transformed modules
+  // with `import ... from "data:"`-style shims, so dev must allow both or the
+  // page stays blank ("can't detect preamble", measured 2026-09-27). The dev
+  // header only ever leaves localhost; the built meta CSP stays strict.
+  const scriptSrc = options.dev
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self'";
   const directives = [
     "default-src 'self'",
-    "script-src 'self'",
+    scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data:",

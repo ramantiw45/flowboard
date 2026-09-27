@@ -7,19 +7,26 @@ import { buildCsp, resolveEndpoints } from './src/config/endpoints';
  * Sends the CSP as a response header while the dev/preview server runs.
  * The policy is built from the same resolved endpoints the app calls, so the
  * two cannot drift (see src/config/endpoints.ts).
+ *
+ * The dev and preview servers get different policies: dev needs the loosened
+ * script-src for Vite's inline preamble (see buildCsp's `dev` option), while
+ * preview serves the production build and must enforce the strict policy, or
+ * `tools/cspcheck.mjs` would be testing a lie.
  */
-function cspDevServer(csp: string): Plugin {
-  const apply = (_req: unknown, res: { setHeader(k: string, v: string): void }, next: () => void) => {
-    res.setHeader('Content-Security-Policy', csp);
-    next();
-  };
+function cspDevServer(devCsp: string, previewCsp: string): Plugin {
+  const apply =
+    (csp: string) =>
+    (_req: unknown, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+      res.setHeader('Content-Security-Policy', csp);
+      next();
+    };
   return {
     name: 'csp-dev-server',
     configureServer(server) {
-      server.middlewares.use(apply);
+      server.middlewares.use(apply(devCsp));
     },
     configurePreviewServer(server) {
-      server.middlewares.use(apply);
+      server.middlewares.use(apply(previewCsp));
     },
   };
 }
@@ -53,18 +60,30 @@ function cspMetaTag(cspMeta: string): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   // Empty prefix: these are read directly rather than through import.meta.env,
   // so the config and the app resolve them from one function.
   const env = loadEnv(mode, process.cwd(), '');
   const { apiBaseUrl, wsUrl } = resolveEndpoints(env);
 
+  // The strict <meta> CSP belongs to the built file only. Injecting it during
+  // `vite dev` would stack it on top of the dev header, and the enforced
+  // policy is the INTERSECTION of the two - the strict meta would re-block
+  // the preamble the dev header deliberately allows, and the page would stay
+  // blank with an empty #root (measured 2026-09-27).
+  const plugins = [
+    react(),
+    cspDevServer(
+      buildCsp(apiBaseUrl, wsUrl, { dev: true }),
+      buildCsp(apiBaseUrl, wsUrl),
+    ),
+  ];
+  if (command === 'build') {
+    plugins.push(cspMetaTag(buildCsp(apiBaseUrl, wsUrl, { meta: true })));
+  }
+
   return {
-    plugins: [
-      react(),
-      cspDevServer(buildCsp(apiBaseUrl, wsUrl)),
-      cspMetaTag(buildCsp(apiBaseUrl, wsUrl, { meta: true })),
-    ],
+    plugins,
     define: {
       global: 'window',
     },
